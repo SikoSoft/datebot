@@ -196,23 +196,25 @@ def capture_tinder(
 
 @capture_app.command("badoo")
 def capture_badoo(
-    dump: Path = typer.Option(None, help="Where to save the raw traffic (default: data/badoo-dump)."),
     cdp: Optional[str] = typer.Option(None, help="Attach to your own Chrome, e.g. http://localhost:9222."),
+    dump: Optional[Path] = typer.Option(None, help="Also save raw Badoo API traffic here (private: it holds session data)."),
 ) -> None:
-    """DISCOVERY: save badoo.com's API traffic so its format can be mapped (no profile parsing yet).
+    """Record Badoo profiles and your own swipes while you use badoo.com.
 
-    You log in and swipe yourself; datebot only listens. Keep the dump private: it holds other
-    people's data and possibly session identifiers.
+    You log in and swipe yourself; datebot only listens. Your swipes become labeled ratings.
     """
-    from datebot import config
-    from datebot.capture import discover
+    from datebot.capture import badoo_browser
+    from datebot.capture.recorder import Recorder
 
-    out = dump or config.data_dir() / "badoo-dump"
+    rec = Recorder(source="badoo")
     try:
-        discover.run(out, cdp=cdp, log=lambda m: typer.echo(f"[badoo] {m}"))
+        badoo_browser.run(rec, cdp=cdp, dump_dir=dump, log=lambda m: typer.echo(f"[badoo] {m}"))
     except KeyboardInterrupt:
         pass
-    typer.echo(discover.summarize(out))
+    c = rec.counts
+    typer.echo(f"Done: {c.new} new profile(s), {c.swipes} swipe(s) recorded"
+               + (f", {c.unknown_swipes} on uncaptured profiles" if c.unknown_swipes else "")
+               + (f", {c.failed} skipped (photos failed)" if c.failed else "") + ".")
 
 
 autoswipe_app = typer.Typer(help="Let the model swipe when it is confident (acts on your account!).", no_args_is_help=True)
