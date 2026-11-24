@@ -126,3 +126,72 @@ def test_surprises_are_the_most_wrong_predictions():
     assert [(s.profile_id, s.liked) for s in got] == [(11, True), (13, False)]
     assert got[0].score == pytest.approx(10) and got[1].score == pytest.approx(80)
     assert len(evaluate.surprises(ids, y, oof, k=5)) == 6
+
+
+def seed_db(path, n):
+    """DB with fake embeddings (liked profiles cluster apart from passed ones) and some bios."""
+    from datebot import db
+
+    conn = db.connect(str(path))
+    rng = np.random.default_rng(0)
+    for i in range(n):
+        liked = i % 2 == 0
+        center = (1 if liked else -1) * np.ones(8)
+        pid = db.add_profile(conn, "manual", [f"{i}a.jpg", f"{i}b.jpg"], name=f"P{i}", bio="hello" if i % 3 == 0 else None)
+        for photo_id, _ in db.photos_missing_embeddings(conn, "fake"):
+            if conn.execute("SELECT profile_id FROM photos WHERE id=?", (photo_id,)).fetchone()[0] == pid:
+                db.set_embedding(conn, photo_id, center + rng.normal(0, 1.5, 8), "fake")
+        if pid % 3 == 1:
+            db.set_text_embedding(conn, pid, center + rng.normal(0, 1.5, 8), "fake")
+        db.add_rating(conn, pid, liked)
+    return conn
+
+
+@pytest.fixture
+def seeded(tmp_path):
+    conn = seed_db(tmp_path / "t.db", 60)
+    yield conn
+    conn.close()
+
+
+def test_run_builds_a_complete_report(seeded):
+    r = evaluate.run(seeded, "fake")
+    assert (r.n, r.likes, r.passes) == (60, 30, 30)
+    assert r.headline.auc > 0.8
+    assert set(r.ablation) == {"photos only", "text only", "photos + text"}
+    assert r.curve and r.drift and not r.drift.drifting
+    assert len(r.surprises) == 10
+    assert r.warnings == []  # 60 clean ratings with a clear signal: nothing to warn about
+
+
+def test_small_rating_sets_are_flagged_as_noisy(tmp_path):
+    r = evaluate.run(seed_db(tmp_path / "s.db", 16), "fake")
+    assert any("Only 16 ratings" in w for w in r.warnings)
+    assert r.curve == []  # too few for a learning curve
+    assert "needs about 20+ ratings" in evaluate.format_report(r)
+
+
+def test_format_report_is_readable_and_uses_describe(seeded):
+    r = evaluate.run(seeded, "fake")
+    text = evaluate.format_report(r, describe=lambda pid: f"profile-{pid}")
+    for needle in ("Ratings: 60 (30 likes, 30 passes", "ROC AUC", "What is it learning from", "Does more rating help",
+                   "Auto-swipe bands", "Biggest surprises", "profile-"):
+        assert needle in text
+
+
+def test_run_errors_are_actionable(tmp_path):
+    from datebot import db
+
+    conn = db.connect(str(tmp_path / "e.db"))
+    with pytest.raises(ValueError, match="No rated profiles"):
+        evaluate.run(conn, "fake")
+    pid = db.add_profile(conn, "manual", ["a.jpg"])
+    db.add_rating(conn, pid, True)
+    db.set_embedding(conn, conn.execute("SELECT id FROM photos").fetchone()[0], np.ones(8), "fake")
+    with pytest.raises(ValueError, match="at least"):
+        evaluate.run(conn, "fake")
+
+
+def test_verdict_bands():
+    assert [evaluate.verdict(a) for a in (0.5, 0.65, 0.75, 0.85, 0.95, None)] == [
+        "barely better than guessing", "weak", "decent", "good", "strong", "undefined"]

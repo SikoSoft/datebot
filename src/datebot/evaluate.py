@@ -237,3 +237,111 @@ def surprises(ids: list[int], y: np.ndarray, oof: np.ndarray, k: int = 5) -> lis
     liked = [i for i in np.argsort(scores) if y[i] == 1][:k]
     passed = [i for i in np.argsort(-scores) if y[i] == 0][:k]
     return [Surprise(ids[i], bool(y[i]), float(scores[i])) for i in [*liked, *passed]]
+
+
+@dataclass
+class Report:
+    n: int
+    likes: int
+    passes: int
+    headline: Headline
+    ablation: dict[str, float | None]
+    drift: Drift | None
+    curve: list[CurvePoint]
+    thresholds: Thresholds
+    surprises: list[Surprise]
+    warnings: list[str]
+
+
+def verdict(auc: float | None) -> str:
+    if auc is None:
+        return "undefined"
+    for bound, word in ((0.9, "strong"), (0.8, "good"), (0.7, "decent"), (0.6, "weak")):
+        if auc >= bound:
+            return word
+    return "barely better than guessing"
+
+
+def run(conn, embed_model: str, like_precision: float = 0.9, pass_precision: float = 0.95) -> Report:
+    """Evaluate the current ratings. Raises ValueError if there are too few to say anything."""
+    ids, X, y = model.training_data(conn, embed_model)
+    if len(y) == 0:
+        raise ValueError("No rated profiles with embeddings yet. Rate some profiles, then run: datebot embed")
+    check_enough(y)
+    oof = oof_scores(X, y)
+    head = headline(y, oof)
+    drift = drift_check(X, y)
+    warnings = []
+    if len(y) < 50:
+        warnings.append(f"Only {len(y)} ratings: treat every number below as rough (aim for 100+).")
+    if int(y.sum()) < 10:
+        warnings.append(f"Only {int(y.sum())} likes: the model has very little to learn your taste from.")
+    if head.auc is not None and head.auc < 0.6:
+        warnings.append("The model is barely beating chance. Rate more, or your taste may not show in photos/bios.")
+    if drift is not None and drift.drifting:
+        warnings.append("Your newest ratings are much harder to predict than older ones: your taste may have "
+                        "shifted. Consider 'datebot reset-ratings' or rating more recent profiles.")
+    return Report(
+        n=len(y), likes=int(y.sum()), passes=len(y) - int(y.sum()), headline=head,
+        ablation=ablation(X, y), drift=drift, curve=learning_curve(X, y),
+        thresholds=suggest_thresholds(y, oof, like_precision, pass_precision),
+        surprises=surprises(ids, y, oof), warnings=warnings,
+    )
+
+
+def _pct(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:.0%}"
+
+
+def _f(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:.2f}"
+
+
+def format_report(r: Report, describe=lambda pid: f"#{pid}") -> str:
+    """Plain-text report. `describe(profile_id)` renders a profile for the surprise list."""
+    h = r.headline
+    lines = [
+        f"Ratings: {r.n} ({r.likes} likes, {r.passes} passes; you like {r.likes / r.n:.0%} of profiles)",
+        "",
+        "How well does it predict profiles it has not seen? (cross-validated)",
+        f"  ROC AUC            {_f(h.auc)}   {verdict(h.auc)}   (0.50 = coin flip, 1.00 = perfect)",
+        f"  accuracy           {_pct(h.accuracy)}   (always guessing the common answer: {_pct(h.majority_baseline)})",
+        f"  balanced accuracy  {_pct(h.balanced_accuracy)}   (50% = chance)",
+        "",
+        "What is it learning from? (AUC)",
+        *[f"  {name:<14} {_f(auc)}" + ("   (no bios captured yet)" if auc is None else "")
+          for name, auc in r.ablation.items()],
+    ]
+    lines += ["", "Does more rating help? (AUC when trained on n ratings, tested on the rest)"]
+    if r.curve:
+        lines += [f"  n={p.n_train:<4} {_f(p.auc_mean)}  ±{_f(p.auc_std)}" for p in r.curve]
+        first, last = next((p for p in r.curve if p.auc_mean is not None), None), next(
+            (p for p in reversed(r.curve) if p.auc_mean is not None), None)
+        if first and last and last.n_train > first.n_train:
+            gain = last.auc_mean - first.auc_mean
+            lines.append("  -> still improving: keep rating" if gain > 0.03 else "  -> flattening out")
+    else:
+        lines.append("  (needs about 20+ ratings)")
+    if r.drift:
+        lines += ["", "Has your taste shifted? (train on your oldest ratings, test on your newest)",
+                  f"  newest {r.drift.n_test} ratings: AUC {_f(r.drift.future_auc)}  "
+                  f"vs random split {_f(r.drift.random_auc)}" + ("   <- drifting" if r.drift.drifting else "")]
+    t = r.thresholds
+    lines += ["", f"Auto-swipe bands (to act automatically when sure, review the rest) - estimated, optimistic:"]
+    if t.like_at is None:
+        lines.append("  auto-like: not reachable at the target precision yet")
+    else:
+        lines.append(f"  auto-like at score >= {t.like_at:.0f}: {t.like_count} profiles, {_pct(t.like_precision)} you liked")
+    if t.pass_at is None:
+        lines.append("  auto-pass: not reachable at the target precision yet")
+    else:
+        lines.append(f"  auto-pass at score <= {t.pass_at:.0f}: {t.pass_count} profiles, {_pct(t.pass_precision)} "
+                     f"you passed; would have lost {t.likes_lost} of your {t.total_likes} likes")
+    lines.append(f"  decided automatically: {_pct(t.coverage)} of profiles; the rest go to your review queue")
+    if r.surprises:
+        lines += ["", "Biggest surprises (model most wrong; blind spots, or ratings to reconsider)"]
+        lines += [f"  you {'liked' if s.liked else 'passed'}, scored {s.score:.0f}: {describe(s.profile_id)}"
+                  for s in r.surprises]
+    if r.warnings:
+        lines += ["", *[f"! {w}" for w in r.warnings]]
+    return "\n".join(lines)
