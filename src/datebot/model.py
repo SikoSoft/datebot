@@ -101,10 +101,15 @@ def score_profile(conn: sqlite3.Connection, trained: Trained, profile_id: int) -
     return None if emb.size == 0 else score(trained, emb)
 
 
-def most_uncertain(conn: sqlite3.Connection, trained: Trained, limit: int = 10) -> list[tuple[int, float]]:
-    """Unrated profiles whose score is closest to 50, i.e. the most informative to rate next."""
+def most_uncertain(
+    conn: sqlite3.Connection, trained: Trained, limit: int = 10, candidates: list[int] | None = None
+) -> list[tuple[int, float]]:
+    """Profiles whose score is closest to 50, i.e. the most informative to rate next.
+
+    `candidates` restricts the pool (e.g. to profiles passing the hard filters); default is all unrated.
+    """
     scored = []
-    for pid in db.unrated_profile_ids(conn):
+    for pid in db.unrated_profile_ids(conn) if candidates is None else candidates:
         s = score_profile(conn, trained, pid)
         if s is not None:
             scored.append((pid, s))
