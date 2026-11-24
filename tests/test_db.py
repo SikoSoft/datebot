@@ -100,3 +100,13 @@ def test_profile_text_includes_interests_and_descriptors(conn):
                          extra={"interests": ["Hiking", "Coffee"], "descriptors": ["Smoking: Non-smoker"],
                                 "jobs": ["ignored"]})
     assert db.profile_text(db.get_profile(conn, pid)) == "Hi Hiking Coffee Smoking: Non-smoker"
+
+
+def test_latest_ratings_are_in_chronological_order(conn):
+    a = db.add_profile(conn, "manual", ["a.jpg"])
+    b = db.add_profile(conn, "manual", ["b.jpg"])
+    c = db.add_profile(conn, "manual", ["c.jpg"])
+    for pid in (c, a, b):
+        db.add_rating(conn, pid, True)
+    db.add_rating(conn, c, False)  # re-rating moves c to the end
+    assert list(db.latest_ratings(conn)) == [a, b, c]

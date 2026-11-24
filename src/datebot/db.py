@@ -151,9 +151,10 @@ def add_rating(conn: sqlite3.Connection, profile_id: int, liked: bool, origin: s
 
 
 def latest_ratings(conn: sqlite3.Connection) -> dict[int, bool]:
-    """Most recent rating per profile (the user may change their mind)."""
+    """Most recent rating per profile (the user may change their mind), oldest rating first."""
     rows = conn.execute(
-        "SELECT profile_id, liked FROM ratings WHERE id IN (SELECT MAX(id) FROM ratings GROUP BY profile_id)"
+        "SELECT profile_id, liked FROM ratings WHERE id IN (SELECT MAX(id) FROM ratings GROUP BY profile_id) "
+        "ORDER BY id"
     )
     return {r["profile_id"]: bool(r["liked"]) for r in rows}
 
