@@ -1,0 +1,33 @@
+[project]
+name = "datebot"
+version = "0.1.0"
+description = "Learns your dating preferences from your swipes and scores profiles 0-100."
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "joblib>=1.3",
+    "pillow>=10.0",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+embed = ["torch>=2.2", "open_clip_torch>=2.24"]
+ui = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+datebot = "datebot.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datebot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
