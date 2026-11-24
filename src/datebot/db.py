@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     age INTEGER,
     bio TEXT,
     extra TEXT NOT NULL DEFAULT '{}',  -- JSON: prompts, distance, etc.
+    text_embedding BLOB,               -- float32 vector of bio + prompts
+    text_embed_model TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (source, external_id)
 );
@@ -61,7 +63,17 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring databases created by older versions up to date."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(profiles)")}
+    for col, ddl in (("text_embedding", "BLOB"), ("text_embed_model", "TEXT")):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE profiles ADD COLUMN {col} {ddl}")
+    conn.commit()
 
 
 @contextmanager
@@ -183,3 +195,43 @@ def undo_last_rating(conn: sqlite3.Connection) -> int | None:
         return None
     conn.execute("DELETE FROM ratings WHERE id = ?", (row["id"],))
     return row["profile_id"]
+
+
+def _strings(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, (list, tuple)):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def profile_text(profile: Profile) -> str:
+    """Bio plus any prompt answers captured in `extra['prompts']`, as one string ('' if none)."""
+    return " ".join(s.strip() for s in [profile.bio or "", *_strings(profile.extra.get("prompts"))] if s.strip())
+
+
+def set_text_embedding(conn: sqlite3.Connection, profile_id: int, vec: np.ndarray, model: str) -> None:
+    conn.execute(
+        "UPDATE profiles SET text_embedding = ?, text_embed_model = ? WHERE id = ?",
+        (np.asarray(vec, dtype=np.float32).tobytes(), model, profile_id),
+    )
+
+
+def profiles_missing_text_embeddings(conn: sqlite3.Connection, model: str) -> list[tuple[int, str]]:
+    """(profile_id, text) for profiles that have text but no embedding from `model`."""
+    out = []
+    for r in conn.execute("SELECT * FROM profiles WHERE text_embedding IS NULL OR text_embed_model != ?", (model,)):
+        text = profile_text(_profile(r))
+        if text:
+            out.append((r["id"], text))
+    return out
+
+
+def text_embedding(conn: sqlite3.Connection, profile_id: int, model: str) -> np.ndarray | None:
+    row = conn.execute(
+        "SELECT text_embedding FROM profiles WHERE id = ? AND text_embed_model = ? AND text_embedding IS NOT NULL",
+        (profile_id, model),
+    ).fetchone()
+    return None if row is None else np.frombuffer(row["text_embedding"], dtype=np.float32)

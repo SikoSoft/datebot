@@ -43,19 +43,8 @@ def save(filters: Filters) -> None:
     _path().write_text(json.dumps(asdict(filters), indent=2))
 
 
-def _strings(value) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        return [s for v in value.values() for s in _strings(v)]
-    if isinstance(value, (list, tuple)):
-        return [s for v in value for s in _strings(v)]
-    return []
-
-
 def searchable_text(profile: db.Profile) -> str:
-    """Bio plus any prompt answers captured in `extra['prompts']`."""
-    return " ".join([profile.bio or "", *_strings(profile.extra.get("prompts"))]).lower()
+    return db.profile_text(profile).lower()
 
 
 def _has(text: str, keyword: str) -> bool:
