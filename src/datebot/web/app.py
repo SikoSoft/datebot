@@ -68,6 +68,37 @@ def create_app() -> FastAPI:
                     card = _card(conn, ids[0], None)
             return {"profile": card, "stats": _stats(conn), "model_active": trained is not None}
 
+    @app.get("/api/review")
+    def review(model_name: str = "default", limit: int = 100):
+        """Audit of the bot's swipes (with your verdict if you gave one) and the cards it left for you."""
+        with db.session() as conn:
+            trained = model.load(model_name)
+            human = db.latest_ratings(conn)
+
+            def entry(pid: int, **kw) -> dict:
+                c = _card(conn, pid, model.score_profile(conn, trained, pid) if trained else None)
+                return {"id": pid, "name": c["name"], "age": c["age"], "bio": c["bio"], "source": c["source"],
+                        "score": c["score"], "photos": c["photos"][:3], **kw}
+
+            auto = []
+            for row in db.auto_swipe_log(conn, limit):
+                pid = row["profile_id"]
+                auto.append(entry(pid, bot_liked=bool(row["liked"]), at=row["created_at"], yours=human.get(pid)))
+            pending = []
+            if trained:
+                for pid, _ in model.most_uncertain(conn, trained, 50, candidates=filters.eligible_unrated(conn)):
+                    pending.append(entry(pid))
+            unreviewed = [a for a in auto if a["yours"] is None]
+            return {"auto": auto, "pending": pending, "model_active": trained is not None,
+                    "summary": {"auto": len(auto), "unreviewed": len(unreviewed),
+                                "disagreed": sum(a["yours"] is not None and a["yours"] != a["bot_liked"] for a in auto),
+                                "agreed": sum(a["yours"] == a["bot_liked"] for a in auto)},
+                    "stats": _stats(conn)}
+
+    @app.get("/review")
+    def review_page():
+        return FileResponse(STATIC / "review.html")
+
     @app.get("/api/filters")
     def get_filters():
         return asdict(filters.load())

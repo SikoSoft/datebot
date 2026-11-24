@@ -70,3 +70,38 @@ def test_filters_hide_profiles_from_queue(client):
 def test_eval_endpoint_explains_when_not_ready(client):
     r = client.get("/api/eval")
     assert r.status_code == 400 and "No rated profiles" in r.json()["detail"]
+
+
+def test_review_queue_audit_and_feedback(client):
+    from datebot import db
+
+    empty = client.get("/api/review").json()
+    assert empty["auto"] == [] and empty["pending"] == [] and empty["summary"]["auto"] == 0
+
+    ids = []
+    for name in ("Ann", "Bea", "Cy"):
+        r = client.post("/api/profiles", files=[("photos", (f"{name}.png", png(), "image/png"))], data={"name": name})
+        ids.append(r.json()["id"])
+    with db.session() as conn:
+        db.add_rating(conn, ids[0], True, origin="auto")
+        db.add_rating(conn, ids[1], False, origin="auto")
+
+    r = client.get("/api/review").json()
+    assert {a["name"]: a["bot_liked"] for a in r["auto"]} == {"Ann": True, "Bea": False}
+    assert all(a["yours"] is None for a in r["auto"]) and r["summary"]["unreviewed"] == 2
+    assert r["stats"]["rated"] == 0                       # the bot's swipes are not your ratings
+    assert r["auto"][0]["name"] == "Bea"                  # newest first
+    assert client.get(r["auto"][0]["photos"][0]).status_code == 200
+
+    client.post("/api/rate", json={"profile_id": ids[0], "liked": False})   # you disagree with the like
+    client.post("/api/rate", json={"profile_id": ids[1], "liked": False})   # you agree with the pass
+    s = client.get("/api/review").json()["summary"]
+    assert (s["unreviewed"], s["agreed"], s["disagreed"]) == (0, 1, 1)
+    assert client.post("/api/undo").json()["undone_profile_id"] == ids[1]   # undo hits your rating, not the bot's
+    assert client.get("/api/review").json()["summary"]["unreviewed"] == 1
+
+
+def test_review_page_is_served(client):
+    r = client.get("/review")
+    assert r.status_code == 200 and "Review queue" in r.text
+    assert 'href="/review"' in client.get("/").text

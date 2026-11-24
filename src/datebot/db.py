@@ -175,6 +175,15 @@ def auto_swiped_ids(conn: sqlite3.Connection) -> dict[int, bool]:
     return {r["profile_id"]: bool(r["liked"]) for r in rows}
 
 
+def auto_swipe_log(conn: sqlite3.Connection, limit: int = 100) -> list[sqlite3.Row]:
+    """The bot's latest swipe per profile, newest first: (profile_id, liked, created_at)."""
+    return conn.execute(
+        "SELECT profile_id, liked, created_at FROM ratings WHERE id IN ("
+        "  SELECT MAX(id) FROM ratings WHERE origin = 'auto' GROUP BY profile_id) ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
 def auto_swipes_today(conn: sqlite3.Connection) -> int:
     """How many swipes the bot has made since local midnight (for the daily cap)."""
     return conn.execute(
