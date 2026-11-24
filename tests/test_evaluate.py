@@ -57,3 +57,37 @@ def test_ablation_attributes_signal_to_the_right_block():
 def test_ablation_skips_text_when_nobody_has_a_bio():
     X, y = make_data(text_frac=0.0)
     assert evaluate.ablation(X, y)["text only"] is None
+
+
+def test_learning_curve_rises_with_more_data():
+    X, y = make_data(n=240, signal=0.12, d=32, seed=3)  # weak signal: needs data to find
+    curve = evaluate.learning_curve(X, y)
+    assert len(curve) >= 4
+    assert [p.n_train for p in curve] == sorted(p.n_train for p in curve)
+    assert curve[0].n_train == evaluate.MIN_CURVE_TRAIN
+    assert curve[-1].auc_mean > curve[0].auc_mean + 0.1
+    assert curve[-1].n_train <= int(240 * 0.8)
+
+
+def test_learning_curve_empty_when_too_little_data():
+    X, y = make_data(n=12)
+    assert evaluate.learning_curve(X, y) == []
+    X, y = make_data(n=18)  # 80% = 14 < 10 + 5
+    assert evaluate.learning_curve(X, y) == []
+
+
+def test_drift_check_flags_a_taste_reversal():
+    X, y = make_data(n=200, signal=1.5, seed=5)
+    stable = evaluate.drift_check(X, y)
+    assert not stable.drifting and stable.future_auc > 0.85
+
+    y_flipped = y.copy()
+    y_flipped[140:] = 1 - y_flipped[140:]  # newest 30% of ratings follow the opposite taste
+    drift = evaluate.drift_check(X, y_flipped)
+    assert drift.drifting and drift.future_auc < 0.3
+    assert (drift.n_train, drift.n_test) == (140, 60)
+
+
+def test_drift_check_needs_enough_recent_data():
+    X, y = make_data(n=12)
+    assert evaluate.drift_check(X, y) is None
