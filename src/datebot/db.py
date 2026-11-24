@@ -127,6 +127,13 @@ def add_profile(
     return pid
 
 
+def find_profile_id(conn: sqlite3.Connection, source: str, external_id: str) -> int | None:
+    row = conn.execute(
+        "SELECT id FROM profiles WHERE source = ? AND external_id = ?", (source, external_id)
+    ).fetchone()
+    return row["id"] if row else None
+
+
 def get_profile(conn: sqlite3.Connection, profile_id: int) -> Profile | None:
     row = conn.execute("SELECT * FROM profiles WHERE id = ?", (profile_id,)).fetchone()
     return _profile(row) if row else None

@@ -86,3 +86,10 @@ def test_migrates_database_from_before_text_columns(tmp_path):
     conn = db.connect(path)
     assert db.get_profile(conn, 1).bio == "old row"
     assert db.profiles_missing_text_embeddings(conn, "m") == [(1, "old row")]
+
+
+def test_find_profile_id(conn):
+    pid = db.add_profile(conn, "tinder", ["a.jpg"], external_id="abc")
+    assert db.find_profile_id(conn, "tinder", "abc") == pid
+    assert db.find_profile_id(conn, "hinge", "abc") is None
+    assert db.find_profile_id(conn, "tinder", "zzz") is None
