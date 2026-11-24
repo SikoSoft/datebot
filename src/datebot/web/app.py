@@ -129,6 +129,24 @@ def create_app() -> FastAPI:
             return {"embedded": embedded, "n_samples": t.n_samples, "cv_accuracy": t.cv_accuracy,
                     "stats": _stats(conn)}
 
+    @app.get("/api/eval")
+    def evaluation(like_precision: float = 0.9, pass_precision: float = 0.95):
+        """Plain-text evaluation report (same as `datebot eval`)."""
+        from datebot import evaluate
+        from datebot.embed import EMBED_ID
+
+        with db.session() as conn:
+            try:
+                report = evaluate.run(conn, EMBED_ID, like_precision, pass_precision)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+
+            def describe(pid: int) -> str:
+                p = db.get_profile(conn, pid)
+                return f"#{pid} {p.name or ''}".strip()
+
+            return {"text": evaluate.format_report(report, describe), "auc": report.headline.auc, "n": report.n}
+
     @app.post("/api/reset-model")
     def reset_model(model_name: str = "default"):
         return {"removed": model.reset(model_name)}

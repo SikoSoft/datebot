@@ -65,3 +65,8 @@ def test_filters_hide_profiles_from_queue(client):
 
     assert client.put("/api/filters", json={"min_age": 40, "max_age": 30}).status_code == 400
     assert client.put("/api/filters", json={}).json()["stats"]["hidden"] == 0
+
+
+def test_eval_endpoint_explains_when_not_ready(client):
+    r = client.get("/api/eval")
+    assert r.status_code == 400 and "No rated profiles" in r.json()["detail"]
