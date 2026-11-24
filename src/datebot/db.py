@@ -174,3 +174,12 @@ def profile_embeddings(conn: sqlite3.Connection, profile_id: int, model: str) ->
     if not rows:
         return np.empty((0, 0), dtype=np.float32)
     return np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in rows])
+
+
+def undo_last_rating(conn: sqlite3.Connection) -> int | None:
+    """Remove the most recent rating and return its profile id (None if there are no ratings)."""
+    row = conn.execute("SELECT id, profile_id FROM ratings ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return None
+    conn.execute("DELETE FROM ratings WHERE id = ?", (row["id"],))
+    return row["profile_id"]

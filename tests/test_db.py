@@ -44,3 +44,12 @@ def test_embedding_roundtrip_and_model_mismatch(conn):
     emb = db.profile_embeddings(conn, pid, "m1")
     assert emb.shape == (2, 4)
     assert db.profile_embeddings(conn, pid, "m2").size == 0
+
+
+def test_undo_last_rating(conn):
+    pid = db.add_profile(conn, "manual", ["a.jpg"])
+    assert db.undo_last_rating(conn) is None
+    db.add_rating(conn, pid, False)
+    db.add_rating(conn, pid, True)
+    assert db.undo_last_rating(conn) == pid
+    assert db.latest_ratings(conn) == {pid: False}
