@@ -93,3 +93,10 @@ def test_find_profile_id(conn):
     assert db.find_profile_id(conn, "tinder", "abc") == pid
     assert db.find_profile_id(conn, "hinge", "abc") is None
     assert db.find_profile_id(conn, "tinder", "zzz") is None
+
+
+def test_profile_text_includes_interests_and_descriptors(conn):
+    pid = db.add_profile(conn, "tinder", ["a.jpg"], bio="Hi",
+                         extra={"interests": ["Hiking", "Coffee"], "descriptors": ["Smoking: Non-smoker"],
+                                "jobs": ["ignored"]})
+    assert db.profile_text(db.get_profile(conn, pid)) == "Hi Hiking Coffee Smoking: Non-smoker"

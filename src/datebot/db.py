@@ -214,9 +214,14 @@ def _strings(value) -> list[str]:
     return []
 
 
+# Keys of `extra` whose strings count as profile text (for embeddings and keyword filters).
+TEXT_EXTRA_KEYS = ("prompts", "interests", "descriptors")
+
+
 def profile_text(profile: Profile) -> str:
-    """Bio plus any prompt answers captured in `extra['prompts']`, as one string ('' if none)."""
-    return " ".join(s.strip() for s in [profile.bio or "", *_strings(profile.extra.get("prompts"))] if s.strip())
+    """Bio plus prompt answers, interests and descriptors from `extra`, as one string ('' if none)."""
+    parts = [profile.bio or ""] + [s for k in TEXT_EXTRA_KEYS for s in _strings(profile.extra.get(k))]
+    return " ".join(p.strip() for p in parts if p.strip())
 
 
 def set_text_embedding(conn: sqlite3.Connection, profile_id: int, vec: np.ndarray, model: str) -> None:
