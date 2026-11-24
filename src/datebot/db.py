@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS ratings (
     id INTEGER PRIMARY KEY,
     profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     liked INTEGER NOT NULL,            -- 1 = would swipe right, 0 = pass
-    origin TEXT NOT NULL DEFAULT 'manual',  -- manual | app (captured swipe)
+    origin TEXT NOT NULL DEFAULT 'manual',  -- manual (rated in the UI) | app (your own captured swipe) | auto (the bot's swipe; never a training label)
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -150,13 +150,37 @@ def add_rating(conn: sqlite3.Connection, profile_id: int, liked: bool, origin: s
     )
 
 
+HUMAN_ORIGINS = ("manual", "app")  # decisions a person made; the only ratings the model may learn from
+
+
 def latest_ratings(conn: sqlite3.Connection) -> dict[int, bool]:
-    """Most recent rating per profile (the user may change their mind), oldest rating first."""
+    """Your most recent human rating per profile (you may change your mind), oldest first.
+
+    Auto-swipes are excluded on purpose: the model must learn from you, never from its own guesses.
+    """
     rows = conn.execute(
-        "SELECT profile_id, liked FROM ratings WHERE id IN (SELECT MAX(id) FROM ratings GROUP BY profile_id) "
-        "ORDER BY id"
+        "SELECT profile_id, liked FROM ratings WHERE id IN ("
+        "  SELECT MAX(id) FROM ratings WHERE origin IN ('manual', 'app') GROUP BY profile_id"
+        ") ORDER BY id"
     )
     return {r["profile_id"]: bool(r["liked"]) for r in rows}
+
+
+def auto_swiped_ids(conn: sqlite3.Connection) -> dict[int, bool]:
+    """Profiles the bot has swiped on, with the direction of its latest swipe."""
+    rows = conn.execute(
+        "SELECT profile_id, liked FROM ratings WHERE id IN ("
+        "  SELECT MAX(id) FROM ratings WHERE origin = 'auto' GROUP BY profile_id) ORDER BY id"
+    )
+    return {r["profile_id"]: bool(r["liked"]) for r in rows}
+
+
+def auto_swipes_today(conn: sqlite3.Connection) -> int:
+    """How many swipes the bot has made since local midnight (for the daily cap)."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM ratings WHERE origin = 'auto' "
+        "AND date(created_at, 'localtime') = date('now', 'localtime')"
+    ).fetchone()[0]
 
 
 def unrated_profile_ids(conn: sqlite3.Connection) -> list[int]:
@@ -167,7 +191,8 @@ def unrated_profile_ids(conn: sqlite3.Connection) -> list[int]:
 
 
 def clear_ratings(conn: sqlite3.Connection) -> int:
-    return conn.execute("DELETE FROM ratings").rowcount
+    """Erase your ratings. The bot's swipes are kept: they record what was already sent to the app."""
+    return conn.execute("DELETE FROM ratings WHERE origin IN ('manual', 'app')").rowcount
 
 
 def set_embedding(conn: sqlite3.Connection, photo_id: int, vec: np.ndarray, model: str) -> None:
@@ -197,8 +222,10 @@ def profile_embeddings(conn: sqlite3.Connection, profile_id: int, model: str) ->
 
 
 def undo_last_rating(conn: sqlite3.Connection) -> int | None:
-    """Remove the most recent rating and return its profile id (None if there are no ratings)."""
-    row = conn.execute("SELECT id, profile_id FROM ratings ORDER BY id DESC LIMIT 1").fetchone()
+    """Remove your most recent rating made in the UI and return its profile id (None if there is none)."""
+    row = conn.execute(
+        "SELECT id, profile_id FROM ratings WHERE origin = 'manual' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
     if not row:
         return None
     conn.execute("DELETE FROM ratings WHERE id = ?", (row["id"],))

@@ -110,3 +110,36 @@ def test_latest_ratings_are_in_chronological_order(conn):
         db.add_rating(conn, pid, True)
     db.add_rating(conn, c, False)  # re-rating moves c to the end
     assert list(db.latest_ratings(conn)) == [a, b, c]
+
+
+def test_auto_swipes_are_never_training_labels(conn):
+    p = db.add_profile(conn, "tinder", ["a.jpg"])
+    db.add_rating(conn, p, True, origin="auto")
+    assert db.latest_ratings(conn) == {}                   # not a label
+    assert db.auto_swiped_ids(conn) == {p: True}
+    assert db.unrated_profile_ids(conn) == []              # but it is already handled in the app
+    db.add_rating(conn, p, False, origin="app")            # a later human decision becomes the label
+    assert db.latest_ratings(conn) == {p: False}
+    assert db.auto_swiped_ids(conn) == {p: True}
+
+
+def test_clear_and_undo_leave_auto_swipes_alone(conn):
+    a = db.add_profile(conn, "tinder", ["a.jpg"])
+    b = db.add_profile(conn, "tinder", ["b.jpg"])
+    db.add_rating(conn, a, True, origin="manual")
+    db.add_rating(conn, b, True, origin="auto")
+    assert db.undo_last_rating(conn) == a                  # skips the newer auto rating
+    assert db.undo_last_rating(conn) is None
+    db.add_rating(conn, a, False, origin="app")
+    assert db.clear_ratings(conn) == 1
+    assert db.auto_swiped_ids(conn) == {b: True}
+
+
+def test_auto_swipes_today_counts_only_auto_and_only_today(conn):
+    a = db.add_profile(conn, "tinder", ["a.jpg"])
+    db.add_rating(conn, a, True, origin="auto")
+    db.add_rating(conn, a, True, origin="app")
+    old = db.add_profile(conn, "tinder", ["b.jpg"])
+    db.add_rating(conn, old, False, origin="auto")
+    conn.execute("UPDATE ratings SET created_at = '2020-01-01 12:00:00' WHERE profile_id = ?", (old,))
+    assert db.auto_swipes_today(conn) == 1
