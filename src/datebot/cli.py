@@ -112,3 +112,14 @@ def stats() -> None:
     likes = sum(ratings.values())
     typer.echo(f"{total} profiles, {len(ratings)} rated ({likes} likes, {len(ratings) - likes} passes), "
                f"{total - len(ratings)} unrated")
+
+
+@app.command()
+def ui(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Start the local rating UI (needs the `ui` extra: uv sync --extra ui)."""
+    import uvicorn
+
+    from datebot.web.app import create_app
+
+    typer.echo(f"Rating UI at http://{host}:{port}")
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
