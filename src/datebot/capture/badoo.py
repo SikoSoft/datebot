@@ -4,8 +4,8 @@ Format verified from real captured traffic (Nov 2026): everything goes through P
 with a JSON envelope {"body": [{"message_type": N, ...}]}.
   * SERVER_GET_ENCOUNTERS: the response body holds message_type 84 -> client_encounters.results[].user.
   * SERVER_ENCOUNTERS_VOTE: the request holds message_type 80 -> server_encounters_vote {person_id, vote}.
-UNVERIFIED: the vote codes. 2 = like and 3 = pass is assumed (the numbers match Bumble's documented
-protocol); confirm against your own swipes. Any other code is ignored rather than guessed.
+Vote codes 2 = like and 3 = pass are confirmed by the user's own session (6 likes, 10 passes). Any other
+code is ignored rather than guessed.
 Badoo exposes no distance in this feed, only a city, so the distance filter cannot apply.
 """
 from __future__ import annotations

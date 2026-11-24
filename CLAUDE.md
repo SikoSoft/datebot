@@ -20,7 +20,7 @@ Datebot: learns the user's dating preferences from their own swipes and scores p
 
 - Python 3.12 + `uv`. Always sync with all extras: `uv sync --extra embed --extra ui --extra capture`.
 - Tests: `uv run pytest -q -m "not slow"` (slow = CLIP embedding and real-Chrome tests; ~91 fast tests, all passing).
-- CLI: `datebot --help`. Main commands: `import`, `embed`, `train`, `score`, `eval`, `ui`, `stats`, `filters`, `reset-model`, `reset-ratings`, `capture tinder|badoo`, `autoswipe tinder`. See `readme.md` for usage.
+- CLI: `datebot --help`. Main commands: `import`, `embed`, `train`, `score`, `eval`, `ui`, `stats`, `filters`, `reset-model`, `reset-ratings`, `capture tinder|badoo`, `autoswipe tinder|badoo`. See `readme.md` for usage.
 - All personal data is under gitignored `data/` (override with `DATEBOT_HOME`). Never commit it.
 
 ## Architecture (src/datebot)
@@ -41,8 +41,8 @@ Done: rating UI, local model, resettable training, hard filters, text features, 
 
 ## Next steps (continue in this order)
 
-1. **Confirm Badoo vote codes with the user** (2=like, 3=pass is assumed; see `capture/badoo.py`) after their first real `capture badoo` session, via `datebot stats`.
-2. Possibly Badoo auto-swipe, reusing `autoswipe/` (needs the Badoo card/keys behaviour confirmed first).
+1. Badoo vote codes are confirmed (2=like, 3=pass).
+2. `autoswipe badoo` exists but the keyboard keys on badoo.com are an unverified guess. After the user runs it observe-only and then `--live` once, check the journal (`data/autoswipe.jsonl`); if it halts with "no swipe happened", find the right keys or switch `PageDriver` to clicking the like/pass buttons.
 3. Hinge is mobile-only: needs phone mirroring or an emulator; ask the user before starting.
 4. Have the user collect ~100 real ratings, run `datebot eval`, and tune from the report.
 5. Optional: review-queue UI for the cards auto-swipe leaves to the user (currently only announced in the terminal).

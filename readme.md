@@ -74,15 +74,16 @@ uv run datebot capture badoo            # opens a normal Chrome (logins are reme
 uv run datebot capture badoo --dump DIR # also save raw API traffic (private: holds session ids and other people's data)
 ```
 
-Same idea as Tinder: it only listens. Profiles from the encounters feed are stored, and your own swipes become labeled ratings. The wire format was verified against real traffic. One assumption is not: vote code 2 = like and 3 = pass (taken from Bumble's [documented protocol](https://medium.com/independent-security-evaluators/reverse-engineering-bumbles-api-a2a0d39b3a87)). Check it with `datebot stats` after a session: your like count should match what you actually liked. Badoo gives a city but no distance, so the distance filter does not apply. Auto-swipe is Tinder-only for now.
+Same idea as Tinder: it only listens. Profiles from the encounters feed are stored, and your own swipes become labeled ratings. The wire format was verified against real traffic. Vote codes 2 = like and 3 = pass were confirmed against a real session (they match Bumble's [documented protocol](https://medium.com/independent-security-evaluators/reverse-engineering-bumbles-api-a2a0d39b3a87)). Badoo gives a city but no distance, so the distance filter does not apply. Auto-swipe also works on Badoo, see below.
 
-## Auto-swipe (Tinder web)
+## Auto-swipe (Tinder and Badoo web)
 
 **This acts on your account. Automating swipes breaks Tinder's terms and can get the account restricted or banned.** Use at your own risk, and start without `--live`.
 
 ```bash
 uv run datebot autoswipe tinder          # observe only: says what it WOULD do, presses nothing
 uv run datebot autoswipe tinder --live   # actually presses like/pass when the model is confident
+uv run datebot autoswipe badoo           # same for badoo.com (observe first!)
 ```
 
 - Score cut-offs come from `datebot eval` (or set `--like-at` / `--pass-at`). Confident cards are swiped; everything in between is announced as "YOUR TURN" and left to you.
@@ -92,7 +93,8 @@ uv run datebot autoswipe tinder --live   # actually presses like/pass when the m
 - Limits: `--max-swipes` per run (20), `--daily-cap` (60), `--min-delay` seconds between swipes (4), and at least `--min-ratings` of your own ratings (50).
 - Its swipes are stored with origin `auto` and are never used as training labels. Every decision is logged to `data/autoswipe.jsonl`.
 - Review what it did at `/review` in the UI (`datebot ui`): the bot's swipes with photo, score and your agree/disagree buttons, plus the cards it left for you. Your verdicts become training ratings, so the model learns where it was wrong.
-- Untested against live Tinder: the card-order and arrow-key assumptions are exactly what the safety checks are for. Run observe-only first.
+- Badoo: the arrow keys are only a guess (change with `--like-key` / `--pass-key`). If the site ignores them the bot halts after 6 seconds with "no swipe happened" and has done nothing; that is the safety check working, not a crash. Badoo has no hard distance filter.
+- Untested against live Tinder or Badoo: the card-order and arrow-key assumptions are exactly what the safety checks are for. Run observe-only first.
 
 ## Is it learning my taste?
 
