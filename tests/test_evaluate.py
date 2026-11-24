@@ -91,3 +91,38 @@ def test_drift_check_flags_a_taste_reversal():
 def test_drift_check_needs_enough_recent_data():
     X, y = make_data(n=12)
     assert evaluate.drift_check(X, y) is None
+
+
+def test_thresholds_hit_targets_on_separable_data():
+    X, y = make_data(n=200, signal=1.5, seed=7)
+    oof = evaluate.oof_scores(X, y)
+    t = evaluate.suggest_thresholds(y, oof)
+    assert t.like_at is not None and t.pass_at is not None and t.pass_at < t.like_at
+    assert t.like_precision >= 0.9 and t.pass_precision >= 0.95
+    assert t.like_count >= 10 and t.pass_count >= 10
+    assert 0.5 < t.coverage <= 1.0
+    assert t.likes_lost == int(y[oof * 100 <= t.pass_at].sum()) and t.total_likes == int(y.sum())
+
+
+def test_thresholds_unreachable_on_noise():
+    X, y = make_data(n=80, signal=0.0, seed=0)
+    t = evaluate.suggest_thresholds(y, evaluate.oof_scores(X, y))
+    assert t.like_at is None and t.pass_at is None and t.coverage == 0.0
+
+
+def test_stricter_targets_lower_coverage():
+    X, y = make_data(n=200, signal=0.6, seed=2, d=16)
+    oof = evaluate.oof_scores(X, y)
+    loose = evaluate.suggest_thresholds(y, oof, like_precision=0.8, pass_precision=0.8)
+    strict = evaluate.suggest_thresholds(y, oof, like_precision=0.95, pass_precision=0.95)
+    assert strict.coverage <= loose.coverage
+
+
+def test_surprises_are_the_most_wrong_predictions():
+    y = np.array([1, 1, 1, 0, 0, 0])
+    oof = np.array([0.9, 0.1, 0.5, 0.8, 0.2, 0.05])
+    ids = [10, 11, 12, 13, 14, 15]
+    got = evaluate.surprises(ids, y, oof, k=1)
+    assert [(s.profile_id, s.liked) for s in got] == [(11, True), (13, False)]
+    assert got[0].score == pytest.approx(10) and got[1].score == pytest.approx(80)
+    assert len(evaluate.surprises(ids, y, oof, k=5)) == 6

@@ -156,3 +156,84 @@ def drift_check(X: np.ndarray, y: np.ndarray, train_frac: float = 0.7, repeats: 
         if (a := _fit_auc(X, y, tr, te)) is not None:
             rand.append(a)
     return Drift(cut, len(test), future, float(np.mean(rand)) if rand else None)
+
+
+@dataclass
+class Thresholds:
+    """Score cut-offs (0-100) for auto-swiping, estimated from out-of-fold scores."""
+    n: int
+    like_at: float | None        # auto-like at or above this score
+    like_precision: float | None  # of profiles scoring >= like_at, the share you actually liked
+    like_count: int
+    pass_at: float | None        # auto-pass at or below this score
+    pass_precision: float | None  # of profiles scoring <= pass_at, the share you actually passed
+    pass_count: int
+    likes_lost: int              # your real likes that would have been auto-passed
+    total_likes: int
+
+    @property
+    def coverage(self) -> float:
+        """Share of profiles decided automatically (the rest go to your review queue)."""
+        return (self.like_count + self.pass_count) / self.n if self.n else 0.0
+
+
+def suggest_thresholds(
+    y: np.ndarray, oof: np.ndarray, like_precision: float = 0.9, pass_precision: float = 0.95, min_support: int = 10
+) -> Thresholds:
+    """Cut-offs that hit both precision targets on at least `min_support` profiles each, chosen together
+    (so the bands cannot overlap) to auto-decide as many profiles as possible.
+
+    These are estimated on the same ratings used to pick them, so treat them as optimistic and
+    re-check as you rate more.
+    """
+    scores = oof * 100
+    n = len(y)
+    desc = np.argsort(-scores, kind="stable")
+    asc = desc[::-1]
+
+    def valid_sizes(order: np.ndarray, target_class: int, target: float) -> np.ndarray:
+        """Band sizes k (top-k of `order`) whose precision for `target_class` meets the target; 0 = no band."""
+        k = np.arange(1, n + 1)
+        ok = (np.cumsum(y[order] == target_class) / k >= target) & (k >= min_support)
+        return np.concatenate([[0], k[ok]])
+
+    likes_k, passes_k = valid_sizes(desc, 1, like_precision), valid_sizes(asc, 0, pass_precision)
+    best_a, best_b = 0, 0
+    for a in likes_k[::-1]:
+        b = int(passes_k[np.searchsorted(passes_k, n - a, side="right") - 1])  # largest valid b with a + b <= n
+        if a + b > best_a + best_b:
+            best_a, best_b = int(a), b
+    like_at = float(scores[desc][best_a - 1]) if best_a else None
+    pass_at = float(scores[asc][best_b - 1]) if best_b else None
+    if like_at is not None and pass_at is not None and pass_at >= like_at:
+        pass_at = None  # tied scores at the boundary: keep the bands disjoint
+
+    like_mask = scores >= like_at if like_at is not None else np.zeros(n, dtype=bool)
+    pass_mask = scores <= pass_at if pass_at is not None else np.zeros(n, dtype=bool)
+    return Thresholds(
+        n=n,
+        like_at=like_at,
+        like_precision=float(y[like_mask].mean()) if like_mask.any() else None,
+        like_count=int(like_mask.sum()),
+        pass_at=pass_at,
+        pass_precision=float(1 - y[pass_mask].mean()) if pass_mask.any() else None,
+        pass_count=int(pass_mask.sum()),
+        likes_lost=int(y[pass_mask].sum()),
+        total_likes=int(y.sum()),
+    )
+
+
+@dataclass
+class Surprise:
+    profile_id: int
+    liked: bool
+    score: float  # out-of-fold score 0-100
+
+
+def surprises(ids: list[int], y: np.ndarray, oof: np.ndarray, k: int = 5) -> list[Surprise]:
+    """Your likes the model scored lowest and your passes it scored highest: where it is most wrong.
+    Worth a look: they are either blind spots in the model or ratings you may want to revisit."""
+    scores = oof * 100
+    liked = [i for i in np.argsort(scores) if y[i] == 1][:k]
+    passed = [i for i in np.argsort(-scores) if y[i] == 0][:k]
+    return [Surprise(ids[i], bool(y[i]), float(scores[i])) for i in [*liked, *passed]]
