@@ -17,3 +17,15 @@ def test_import_stats_and_reset_flow(tmp_path, monkeypatch):
     assert "2 profiles, 0 rated" in runner.invoke(app, ["stats"]).output
     assert "No model" in runner.invoke(app, ["reset-model"]).output
     assert "Deleted 0" in runner.invoke(app, ["reset-ratings", "--yes"]).output
+
+
+def test_filters_set_show_clear(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    assert "No filters" in runner.invoke(app, ["filters", "show"]).output
+    out = runner.invoke(app, ["filters", "set", "--min-age", "25", "--block", "smoker", "--block", "420"]).output
+    assert "Saved" in out
+    shown = runner.invoke(app, ["filters", "show"]).output
+    assert "min_age: 25" in shown and "smoker" in shown
+    assert runner.invoke(app, ["filters", "set", "--min-age", "50", "--max-age", "30"]).exit_code == 1
+    runner.invoke(app, ["filters", "clear"])
+    assert "No filters" in runner.invoke(app, ["filters", "show"]).output

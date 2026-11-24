@@ -5,7 +5,7 @@ from typing import Optional
 
 import typer
 
-from datebot import __version__, db, ingest, model
+from datebot import __version__, db, filters as hard_filters, ingest, model
 
 app = typer.Typer(help="Learn your dating preferences and score profiles 0-100.", no_args_is_help=True)
 
@@ -69,10 +69,11 @@ def score(
         typer.secho(f"No model '{name}'. Run: datebot train", fg=typer.colors.RED)
         raise typer.Exit(1)
     with db.session() as conn:
+        eligible = hard_filters.eligible_unrated(conn)
         if uncertain:
-            rows = model.most_uncertain(conn, trained, limit)
+            rows = model.most_uncertain(conn, trained, limit, candidates=eligible)
         else:
-            rows = [(pid, model.score_profile(conn, trained, pid)) for pid in db.unrated_profile_ids(conn)]
+            rows = [(pid, model.score_profile(conn, trained, pid)) for pid in eligible]
             rows = sorted((r for r in rows if r[1] is not None), key=lambda r: -r[1])[:limit]
         for pid, s in rows:
             p = db.get_profile(conn, pid)
@@ -123,3 +124,50 @@ def ui(host: str = "127.0.0.1", port: int = 8000) -> None:
 
     typer.echo(f"Rating UI at http://{host}:{port}")
     uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+
+
+filters_app = typer.Typer(help="Hard deal-breakers applied before the model.", no_args_is_help=True)
+app.add_typer(filters_app, name="filters")
+
+
+@filters_app.command("show")
+def filters_show() -> None:
+    """Show the current filters."""
+    f = hard_filters.load()
+    typer.echo("No filters set." if f.is_empty() else "\n".join(f"{k}: {v}" for k, v in vars(f).items() if v))
+
+
+@filters_app.command("set")
+def filters_set(
+    min_age: Optional[int] = typer.Option(None),
+    max_age: Optional[int] = typer.Option(None),
+    max_distance_km: Optional[float] = typer.Option(None),
+    block: Optional[list[str]] = typer.Option(None, help="Reject profiles mentioning this word/phrase (repeatable)."),
+    require: Optional[list[str]] = typer.Option(None, help="Reject unless one of these is mentioned (repeatable)."),
+) -> None:
+    """Update filters. Only the options you pass change; keyword lists are replaced when given."""
+    f = hard_filters.load()
+    if min_age is not None:
+        f.min_age = min_age
+    if max_age is not None:
+        f.max_age = max_age
+    if max_distance_km is not None:
+        f.max_distance_km = max_distance_km
+    if block:
+        f.blocked_keywords = block
+    if require:
+        f.required_keywords = require
+    if f.min_age is not None and f.max_age is not None and f.min_age > f.max_age:
+        typer.secho("min-age is greater than max-age", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    hard_filters.save(f)
+    with db.session() as conn:
+        hidden = len(db.unrated_profile_ids(conn)) - len(hard_filters.eligible_unrated(conn, f))
+    typer.echo(f"Saved. {hidden} unrated profile(s) now hidden.")
+
+
+@filters_app.command("clear")
+def filters_clear() -> None:
+    """Remove all filters."""
+    hard_filters.save(hard_filters.Filters())
+    typer.echo("Filters cleared.")
