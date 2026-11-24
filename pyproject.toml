@@ -31,3 +31,4 @@ packages = ["src/datebot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: downloads/loads the CLIP model"]
