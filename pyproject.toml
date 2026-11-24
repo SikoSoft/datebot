@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 embed = ["torch>=2.2", "open_clip_torch>=2.24"]
+capture = ["playwright>=1.44"]
 ui = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
 
 [dependency-groups]
