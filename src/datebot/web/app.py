@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -8,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from datebot import config, db, ingest, model
+from datebot import config, db, filters, ingest, model
 
 STATIC = Path(__file__).parent / "static"
 
@@ -18,12 +19,22 @@ class RateBody(BaseModel):
     liked: bool
 
 
+class FiltersBody(BaseModel):
+    min_age: int | None = None
+    max_age: int | None = None
+    max_distance_km: float | None = None
+    blocked_keywords: list[str] = []
+    required_keywords: list[str] = []
+
+
 def _stats(conn) -> dict:
     ratings = db.latest_ratings(conn)
     total = conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
     likes = sum(ratings.values())
+    unrated = total - len(ratings)
     return {"total": total, "rated": len(ratings), "likes": likes, "passes": len(ratings) - likes,
-            "unrated": total - len(ratings), "models": model.list_models()}
+            "unrated": unrated, "hidden": unrated - len(filters.eligible_unrated(conn)),
+            "models": model.list_models()}
 
 
 def _card(conn, pid: int, score: float | None) -> dict:
@@ -45,16 +56,30 @@ def create_app() -> FastAPI:
         """Next profile to rate: the model's most uncertain pick if a model exists, else oldest unrated."""
         with db.session() as conn:
             trained = model.load(model_name)
+            eligible = filters.eligible_unrated(conn)  # hard filters: hidden profiles are never shown
             card = None
             if trained:
-                picks = model.most_uncertain(conn, trained, 1)
+                picks = model.most_uncertain(conn, trained, 1, candidates=eligible)
                 if picks:
                     card = _card(conn, *picks[0])
             if card is None:
-                ids = db.unrated_profile_ids(conn)
+                ids = eligible
                 if ids:
                     card = _card(conn, ids[0], None)
             return {"profile": card, "stats": _stats(conn), "model_active": trained is not None}
+
+    @app.get("/api/filters")
+    def get_filters():
+        return asdict(filters.load())
+
+    @app.put("/api/filters")
+    def put_filters(body: FiltersBody):
+        f = filters.Filters(**body.model_dump())
+        if f.min_age is not None and f.max_age is not None and f.min_age > f.max_age:
+            raise HTTPException(400, "min_age is greater than max_age")
+        filters.save(f)
+        with db.session() as conn:
+            return {"filters": asdict(f), "stats": _stats(conn)}
 
     @app.post("/api/rate")
     def rate(body: RateBody):

@@ -52,3 +52,16 @@ def test_train_needs_enough_ratings(client):
 def test_index_served(client):
     r = client.get("/")
     assert r.status_code == 200 and "Datebot" in r.text
+
+
+def test_filters_hide_profiles_from_queue(client):
+    for age in (19, 30):
+        client.post("/api/profiles", files=[("photos", ("a.png", png(), "image/png"))], data={"age": age})
+    assert client.get("/api/filters").json()["min_age"] is None
+
+    r = client.put("/api/filters", json={"min_age": 21}).json()
+    assert r["stats"]["hidden"] == 1
+    assert client.get("/api/next").json()["profile"]["age"] == 30
+
+    assert client.put("/api/filters", json={"min_age": 40, "max_age": 30}).status_code == 400
+    assert client.put("/api/filters", json={}).json()["stats"]["hidden"] == 0
