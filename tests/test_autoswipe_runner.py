@@ -126,3 +126,11 @@ def test_bot_swipes_tagged_auto_and_yours_app():
     feed(s, "lo", "x")
     s.step()
     assert s.swipe_origin(Swipe("x", True)) == "app"
+
+
+def test_custom_keys_are_pressed():
+    s, d = make()
+    s.like_key, s.pass_key = "l", "h"
+    feed(s, "lo")
+    s.step()
+    assert d.keys == ["h"]

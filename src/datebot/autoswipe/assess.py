@@ -13,12 +13,12 @@ def bands_from_eval(conn, like_precision: float, pass_precision: float) -> Bands
     return Bands(like_at=t.like_at, pass_at=t.pass_at)
 
 
-def make_assess(trained, f: filters.Filters):
+def make_assess(trained, f: filters.Filters, source: str = "tinder"):
     """Return assess(external_id) -> (score, hard-filter reason), embedding the profile on first sight."""
 
     def assess(external_id: str):
         with db.session() as conn:
-            pid = db.find_profile_id(conn, "tinder", external_id)
+            pid = db.find_profile_id(conn, source, external_id)
             if pid is None:
                 return None, None
             embed.embed_pending(conn)

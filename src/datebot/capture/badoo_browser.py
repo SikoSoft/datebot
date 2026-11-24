@@ -48,7 +48,8 @@ def attach(context, recorder: Recorder, log: Callable[[str], None] = print, obse
 
 
 def run(recorder: Recorder, cdp: str | None = None, dump_dir: Path | None = None,
-        log: Callable[[str], None] = print) -> None:
+        log: Callable[[str], None] = print, observer: Observer | None = None,
+        tick: Callable[[object], bool] | None = None, tick_ms: int = 500) -> None:
     """Open a normal Chrome (Google/phone sign-in works) or attach to yours, and record until it is closed."""
     from playwright.sync_api import sync_playwright
 
@@ -65,10 +66,10 @@ def run(recorder: Recorder, cdp: str | None = None, dump_dir: Path | None = None
             log("Chrome opened (logins are remembered). Swipe as usual on Badoo; close the window to stop.")
         try:
             context = pw.chromium.connect_over_cdp(endpoint).contexts[0]
-            attach(context, recorder, log)
+            attach(context, recorder, log, observer)
             if dump_dir:
                 discover.attach(context, dump_dir, badoo.HOSTS, log)
-            pump(context)
+            pump(context, tick_ms, (lambda: tick(context)) if tick else None)
         finally:
             if proc and proc.poll() is None:
                 proc.terminate()

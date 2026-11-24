@@ -24,7 +24,7 @@ from datebot.autoswipe.logic import Bands, CardQueue, Decision, Governor, Handsh
 from datebot.capture.recorder import Recorder
 from datebot.capture.tinder import CapturedProfile, Swipe
 
-LIKE_KEY, PASS_KEY = "ArrowRight", "ArrowLeft"
+LIKE_KEY, PASS_KEY = "ArrowRight", "ArrowLeft"  # defaults; sites can differ (see like_key/pass_key)
 
 Assess = Callable[[str], "tuple[float | None, str | None]"]  # external id -> (model score, hard-filter reason)
 
@@ -50,6 +50,8 @@ class AutoSwiper:
         live: bool = False,
         filters_pass: bool = True,
         key_timeout: float = 6.0,
+        like_key: str = LIKE_KEY,
+        pass_key: str = PASS_KEY,
         log: Callable[[str], None] = print,
         journal: Callable[[dict], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
@@ -58,6 +60,7 @@ class AutoSwiper:
         self.governor, self.handshake, self.driver = governor, handshake, driver
         self.live, self.filters_pass, self.key_timeout = live, filters_pass, key_timeout
         self.log, self.journal, self.clock = log, journal, clock
+        self.like_key, self.pass_key = like_key, pass_key
 
         self.queue = CardQueue()
         self.decisions: dict[str, Decision] = {}
@@ -124,7 +127,7 @@ class AutoSwiper:
         if d.action == "human" or not self.live:
             return True
         if self.driver is None:
-            return True  # no Tinder tab to press keys on yet
+            return True  # no app tab to press keys on yet
         if not self.handshake.trusted:
             self._note(f"wait:{self.handshake.streak}", f"Not acting yet: swipe {self.handshake.required} cards "
                        f"yourself first so the bot can verify it follows the card order "
@@ -155,7 +158,7 @@ class AutoSwiper:
         name = self.names.get(card, card)
         self._pending, self._result, self._unexpected = (card, d.action), None, None
         try:
-            self.driver.press(LIKE_KEY if d.action == "like" else PASS_KEY)
+            self.driver.press(self.like_key if d.action == "like" else self.pass_key)
             deadline = self.clock() + self.key_timeout
             while self._result is None and self._unexpected is None and self.clock() < deadline:
                 self.driver.wait(100)
@@ -168,10 +171,10 @@ class AutoSwiper:
             return self._halt(f"a different profile ({unexpected.user_id}) was swiped while acting on {name}")
         if result is None:
             return self._halt(f"no swipe happened within {self.key_timeout:.0f}s of pressing the key for {name}. "
-                              "Is a pop-up open (match, out of likes), or is the Tinder cards screen not showing?")
+                              "Is a pop-up open (match, out of likes), is the swipe screen not showing, or does this site not use those keys?")
         swipe, was_top = result
         if swipe.liked != (d.action == "like"):
-            return self._halt(f"WRONG DIRECTION: wanted to {d.action} {name} but Tinder recorded a "
+            return self._halt(f"WRONG DIRECTION: wanted to {d.action} {name} but the app recorded a "
                               f"{'like' if swipe.liked else 'pass'}. The arrow keys do not mean what the bot assumed.")
         if not was_top:
             return self._halt(f"{name} was not the card the bot thought was on top; card order is not as assumed")
