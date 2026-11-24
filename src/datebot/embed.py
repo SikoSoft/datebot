@@ -39,8 +39,31 @@ def embed_images(paths: list[str], batch_size: int = 16) -> np.ndarray:
     return np.concatenate(out) if out else np.empty((0, 0), dtype=np.float32)
 
 
+def embed_texts(texts: list[str], batch_size: int = 32) -> np.ndarray:
+    """L2-normalized CLIP text embeddings, shape (len(texts), dim). Text beyond CLIP's 77 tokens is truncated."""
+    import open_clip
+    import torch
+
+    model, _, device = _load()
+    tokenizer = open_clip.get_tokenizer(MODEL_NAME)
+    out = []
+    for i in range(0, len(texts), batch_size):
+        tokens = tokenizer(texts[i : i + batch_size]).to(device)
+        with torch.no_grad():
+            feats = model.encode_text(tokens)
+            feats = feats / feats.norm(dim=-1, keepdim=True)
+        out.append(feats.cpu().numpy().astype(np.float32))
+    return np.concatenate(out) if out else np.empty((0, 0), dtype=np.float32)
+
+
 def embed_pending(conn: sqlite3.Connection) -> int:
-    """Embed every photo that has no embedding for the current model. Returns the count embedded."""
+    """Embed every photo and profile text that lacks an embedding for the current model.
+
+    Returns the number of photos embedded (texts are embedded too, but not counted)."""
+    texts = db.profiles_missing_text_embeddings(conn, EMBED_ID)
+    if texts:
+        for (pid, _), vec in zip(texts, embed_texts([t for _, t in texts])):
+            db.set_text_embedding(conn, pid, vec, EMBED_ID)
     pending = db.photos_missing_embeddings(conn, EMBED_ID)
     if not pending:
         return 0
