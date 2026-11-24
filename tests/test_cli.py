@@ -29,3 +29,8 @@ def test_filters_set_show_clear(tmp_path, monkeypatch):
     assert runner.invoke(app, ["filters", "set", "--min-age", "50", "--max-age", "30"]).exit_code == 1
     runner.invoke(app, ["filters", "clear"])
     assert "No filters" in runner.invoke(app, ["filters", "show"]).output
+
+
+def test_capture_tinder_is_registered():
+    out = runner.invoke(app, ["capture", "tinder", "--help"]).output
+    assert "--cdp" in out and "--dump" in out

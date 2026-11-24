@@ -172,3 +172,32 @@ def filters_clear() -> None:
     """Remove all filters."""
     hard_filters.save(hard_filters.Filters())
     typer.echo("Filters cleared.")
+
+
+capture_app = typer.Typer(help="Capture profiles and your swipes from dating apps.", no_args_is_help=True)
+app.add_typer(capture_app, name="capture")
+
+
+@capture_app.command("tinder")
+def capture_tinder(
+    cdp: Optional[str] = typer.Option(
+        None, help="Attach to your own Chrome instead, e.g. http://localhost:9222 "
+                   "(start it with --remote-debugging-port=9222 and a separate --user-data-dir)."),
+    dump: Optional[Path] = typer.Option(None, help="Save raw Tinder responses here to debug parsing."),
+) -> None:
+    """Record Tinder profiles and your own swipes while you use tinder.com (needs the `capture` extra).
+
+    You log in and swipe yourself; datebot only listens. Your swipes become labeled ratings.
+    """
+    from datebot.capture import browser
+    from datebot.capture.recorder import Recorder
+
+    rec = Recorder()
+    try:
+        browser.run(rec, cdp=cdp, dump_dir=dump, log=lambda m: typer.echo(f"[capture] {m}"))
+    except KeyboardInterrupt:
+        pass
+    c = rec.counts
+    typer.echo(f"Done: {c.new} new profile(s), {c.swipes} swipe(s) recorded"
+               + (f", {c.unknown_swipes} on uncaptured profiles" if c.unknown_swipes else "")
+               + (f", {c.failed} skipped (photos failed)" if c.failed else "") + ".")
