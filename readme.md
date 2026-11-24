@@ -67,6 +67,27 @@ becomes a labeled rating (`origin = app`). Profiles you were shown but have not 
 - Using Tinder with automation tools is against its terms of service; account restrictions are possible.
   Capture only reads; it never swipes for you.
 
+## Is it learning my taste?
+
+```bash
+uv run datebot eval          # or the "Evaluate" button in the UI
+```
+
+Every number comes from profiles the model was *not* trained on (cross-validation or time-based holdout):
+
+- **ROC AUC** is the headline: 0.5 is a coin flip, 0.7 is decent, 0.8+ is good. Accuracy alone misleads when
+  you pass on most profiles, so it is shown next to the "always guess the common answer" baseline.
+- **What it learns from:** AUC using photos only, bio text only, and both.
+- **Does more rating help?** A learning curve. If it is still rising, keep rating; if flat, more of the same will not help.
+- **Has your taste shifted?** Trains on your oldest ratings and tests on your newest.
+- **Auto-swipe bands:** the score cut-offs where it is, say, 90% right on likes and 95% right on passes, how many
+  profiles that decides, and how many of your real likes an auto-pass band would have lost. Everything between the
+  bands is meant for your review queue. These are estimated on the same ratings, so they are optimistic: re-check
+  as you rate more. Tune with `--like-precision` and `--pass-precision`.
+- **Biggest surprises:** your likes it scored lowest and passes it scored highest. Either blind spots or ratings to reconsider.
+
+With under about 50 ratings the report warns that results are rough.
+
 ## Resetting
 
 - `datebot reset-model` (or the UI button): forget the trained model; ratings are kept, so you can retrain.
@@ -79,5 +100,6 @@ becomes a labeled rating (`origin = app`). Profiles you were shown but have not 
 - [x] Bio/prompt text features
 - [x] Hard filters (age, distance, deal-breakers)
 - [x] Capture profiles and swipes from Tinder web
+- [x] Evaluation tooling (`datebot eval`)
 - [ ] Capture from Badoo web and Hinge
 - [ ] Auto-swipe with a confidence band (right above high, left below low, review queue in between)
