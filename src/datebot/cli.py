@@ -194,6 +194,80 @@ def capture_tinder(
                + (f", {c.failed} skipped (photos failed)" if c.failed else "") + ".")
 
 
+autoswipe_app = typer.Typer(help="Let the model swipe when it is confident (acts on your account!).", no_args_is_help=True)
+app.add_typer(autoswipe_app, name="autoswipe")
+
+
+@autoswipe_app.command("tinder")
+def autoswipe_tinder(
+    live: bool = typer.Option(False, "--live", help="Actually press like/pass. Without it the bot only says what it would do."),
+    like_at: Optional[float] = typer.Option(None, help="Auto-like at or above this score (default: from `datebot eval`)."),
+    pass_at: Optional[float] = typer.Option(None, help="Auto-pass at or below this score (default: from `datebot eval`)."),
+    like_precision: float = typer.Option(0.9, min=0.5, max=1.0),
+    pass_precision: float = typer.Option(0.95, min=0.5, max=1.0),
+    max_swipes: int = typer.Option(20, min=1, help="Stop after this many automatic swipes this run."),
+    daily_cap: int = typer.Option(60, min=1, help="Never exceed this many automatic swipes per day."),
+    min_delay: float = typer.Option(4.0, min=1.0, help="Minimum seconds between automatic swipes."),
+    min_ratings: int = typer.Option(50, min=10, help="Refuse to act with fewer of your own ratings than this."),
+    handshake: int = typer.Option(5, min=3, help="Swipes you must make yourself, matching the bot's prediction, before it acts."),
+    model_name: str = typer.Option("default", "--model"),
+    cdp: Optional[str] = typer.Option(None, help="Attach to your own Chrome, e.g. http://localhost:9222."),
+) -> None:
+    """Watch tinder.com and swipe automatically ONLY when the model is confident; leave the rest to you.
+
+    Automating swipes violates Tinder's terms and can get the account restricted. Start without --live.
+    """
+    from datebot import embed, filters as hard_filters, model
+    from datebot.autoswipe import assess as glue
+    from datebot.autoswipe.logic import Bands, Governor, Handshake
+    from datebot.autoswipe.runner import AutoSwiper, file_journal
+    from datebot.capture import browser
+    from datebot.capture.recorder import Recorder
+
+    trained = model.load(model_name)
+    if trained is None:
+        typer.echo("No trained model. Rate some profiles and run `datebot train` first.")
+        raise typer.Exit(1)
+    with db.session() as conn:
+        n = len(db.latest_ratings(conn))
+        if live and n < min_ratings:
+            typer.echo(f"Only {n} ratings by you; need {min_ratings} before acting (--min-ratings to override).")
+            raise typer.Exit(1)
+        if like_at is None and pass_at is None:
+            try:
+                bands = glue.bands_from_eval(conn, like_precision, pass_precision)
+            except ValueError as e:
+                typer.echo(f"Cannot pick score bands automatically: {e}")
+                raise typer.Exit(1)
+        else:
+            bands = Bands(like_at, pass_at)
+        today = db.auto_swipes_today(conn)
+    if bands.empty:
+        typer.echo("No score is trustworthy enough to act on yet (bands are empty). Rate more profiles.")
+        raise typer.Exit(1)
+    typer.echo(f"Bands: like at >= {bands.like_at}, pass at <= {bands.pass_at}; everything between is yours."
+               f" Mode: {'LIVE' if live else 'observe only'}.")
+
+    rec = Recorder()
+    gov = Governor(max_swipes, daily_cap, already_today=today, min_delay=min_delay)
+    from datebot import config
+    swiper = AutoSwiper(rec, glue.make_assess(trained, hard_filters.load()), bands, gov, Handshake(handshake),
+                        driver=None, live=live, log=lambda m: typer.echo(f"[autoswipe] {m}"),
+                        journal=file_journal(config.data_dir() / "autoswipe.jsonl"))
+
+    def tick(context) -> bool:
+        pages = [p for p in context.pages if "tinder.com" in p.url]
+        if pages:
+            swiper.driver = browser.PageDriver(pages[0])
+        return swiper.step()
+
+    try:
+        browser.run(rec, cdp=cdp, log=lambda m: typer.echo(f"[capture] {m}"), observer=swiper, tick=tick, tick_ms=300)
+    except KeyboardInterrupt:
+        pass
+    typer.echo(swiper.summary())
+
+
 @app.command("eval")
 def eval_(
     like_precision: float = typer.Option(0.9, min=0.5, max=1.0, help="Target share of auto-liked profiles you really like."),

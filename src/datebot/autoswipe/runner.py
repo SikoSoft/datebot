@@ -123,6 +123,8 @@ class AutoSwiper:
             self._announce(card, d)
         if d.action == "human" or not self.live:
             return True
+        if self.driver is None:
+            return True  # no Tinder tab to press keys on yet
         if not self.handshake.trusted:
             self._note(f"wait:{self.handshake.streak}", f"Not acting yet: swipe {self.handshake.required} cards "
                        f"yourself first so the bot can verify it follows the card order "

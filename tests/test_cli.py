@@ -58,3 +58,9 @@ def test_eval_reports_and_explains_when_there_is_nothing_to_evaluate(tmp_path, m
     assert out.exit_code == 0
     assert "Ratings: 40 (20 likes, 20 passes" in out.output and "ROC AUC" in out.output
     assert "Biggest surprises" in out.output
+
+
+def test_autoswipe_refuses_without_a_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    r = runner.invoke(app, ["autoswipe", "tinder", "--live"])
+    assert r.exit_code == 1 and "No trained model" in r.output
