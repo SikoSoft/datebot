@@ -67,6 +67,23 @@ becomes a labeled rating (`origin = app`). Profiles you were shown but have not 
 - Using Tinder with automation tools is against its terms of service; account restrictions are possible.
   Capture only reads; it never swipes for you.
 
+## Auto-swipe (Tinder web)
+
+**This acts on your account. Automating swipes breaks Tinder's terms and can get the account restricted or banned.** Use at your own risk, and start without `--live`.
+
+```bash
+uv run datebot autoswipe tinder          # observe only: says what it WOULD do, presses nothing
+uv run datebot autoswipe tinder --live   # actually presses like/pass when the model is confident
+```
+
+- Score cut-offs come from `datebot eval` (or set `--like-at` / `--pass-at`). Confident cards are swiped; everything in between is announced as "YOUR TURN" and left to you.
+- Hard filter deal-breakers (age, distance, keywords) are passed automatically.
+- Before pressing anything the bot must watch you swipe `--handshake` cards (default 5) exactly where it predicted, proving it knows which card is on top. Its first action is always a pass, to confirm the arrow keys.
+- After each press it checks the swipe Tinder received. Wrong profile, wrong direction or no swipe halts it immediately.
+- Limits: `--max-swipes` per run (20), `--daily-cap` (60), `--min-delay` seconds between swipes (4), and at least `--min-ratings` of your own ratings (50).
+- Its swipes are stored with origin `auto` and are never used as training labels. Every decision is logged to `data/autoswipe.jsonl`.
+- Untested against live Tinder: the card-order and arrow-key assumptions are exactly what the safety checks are for. Run observe-only first.
+
 ## Is it learning my taste?
 
 ```bash
@@ -102,4 +119,4 @@ With under about 50 ratings the report warns that results are rough.
 - [x] Capture profiles and swipes from Tinder web
 - [x] Evaluation tooling (`datebot eval`)
 - [ ] Capture from Badoo web and Hinge
-- [ ] Auto-swipe with a confidence band (right above high, left below low, review queue in between)
+- [x] Auto-swipe with a confidence band (Tinder web; the middle band is left to you in the app)
