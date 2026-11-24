@@ -83,21 +83,55 @@ def summarize(out_dir: Path, top: int = 15) -> str:
     return "\n".join(lines)
 
 
+CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+
+def launch_chrome(profile_dir: Path, url: str, port: int = 9222, timeout: float = 20):
+    """Start an ordinary Chrome (no automation flags) that we can listen to over its debugging port.
+
+    Sites such as Google refuse sign-in inside a Chrome that Playwright launched itself, but accept a normal
+    one. The profile directory is dedicated to datebot, so logins are remembered between runs.
+    """
+    import subprocess
+    import urllib.request
+
+    proc = subprocess.Popen([CHROME_MAC, f"--remote-debugging-port={port}", f"--user-data-dir={profile_dir}",
+                             "--no-first-run", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1)
+            return proc
+        except Exception:
+            if proc.poll() is not None:
+                raise RuntimeError("Chrome exited immediately (is another Chrome using this profile or port?)")
+            time.sleep(0.3)
+    proc.terminate()
+    raise RuntimeError(f"Chrome did not open its debugging port {port} in time")
+
+
 def run(out_dir: Path, hosts: tuple[str, ...] = BADOO_HOSTS, start_url: str = BADOO_START_URL,
         cdp: str | None = None, log: Callable[[str], None] = print, profile: str = "badoo") -> None:
     from playwright.sync_api import sync_playwright
 
     from datebot.capture import browser
 
+    proc = None
     with sync_playwright() as pw:
         if cdp:
-            context = pw.chromium.connect_over_cdp(cdp).contexts[0]
+            endpoint = cdp
             log("Attached. Reload the tab so its requests are captured.")
         else:
             d = config.data_dir() / "browser" / profile
             d.mkdir(parents=True, exist_ok=True)
-            context = pw.chromium.launch_persistent_context(str(d), channel="chrome", headless=False, no_viewport=True)
-            (context.pages[0] if context.pages else context.new_page()).goto(start_url)
-            log("Chrome opened. Log in yourself, then swipe ~15 cards (a few likes, a few passes). Close the window to stop.")
-        attach(context, out_dir, hosts, log)
-        browser.pump(context)
+            proc = launch_chrome(d, start_url)
+            endpoint = "http://127.0.0.1:9222"
+            log("A normal Chrome window opened (Google sign-in works there). Log in, then swipe ~15 cards "
+                "(a few likes, a few passes). Close the window to stop.")
+        try:
+            context = pw.chromium.connect_over_cdp(endpoint).contexts[0]
+            attach(context, out_dir, hosts, log)
+            browser.pump(context)
+        finally:
+            if proc and proc.poll() is None:
+                proc.terminate()

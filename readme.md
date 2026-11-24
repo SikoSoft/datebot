@@ -72,7 +72,7 @@ becomes a labeled rating (`origin = app`). Profiles you were shown but have not 
 Badoo's web API is undocumented and not yet mapped, so there is no profile parser yet. This step only records traffic so one can be written from real samples (Bumble, a sibling app, is described in [this write-up](https://medium.com/independent-security-evaluators/reverse-engineering-bumbles-api-a2a0d39b3a87); Badoo may differ).
 
 ```bash
-uv run datebot capture badoo            # log in yourself, swipe ~15 cards, close the window
+uv run datebot capture badoo            # opens a normal Chrome: log in yourself (Google sign-in works), swipe ~15 cards, close the window
 ```
 
 Saved to `data/badoo-dump/` (override with `--dump`): one JSON file per API call, plus an endpoint summary when you close Chrome. Headers and cookies are never saved, but bodies and URLs may hold session ids and other people's data, so keep the dump private.
