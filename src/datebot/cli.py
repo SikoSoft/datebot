@@ -85,7 +85,8 @@ def models() -> None:
     """List saved models."""
     for name in model.list_models():
         t = model.load(name)
-        typer.echo(f"{name}: {t.n_samples} ratings, trained {t.trained_at}")
+        typer.echo(f"{name}: {t.n_samples} ratings, trained {t.trained_at}" if t
+                   else f"{name}: outdated, retrain with: datebot train --name {name}")
 
 
 @app.command("reset-model")
