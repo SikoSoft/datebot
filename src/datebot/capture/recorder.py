@@ -74,13 +74,15 @@ class Recorder:
                 self.counts.new += 1
         return new
 
-    def record_swipe(self, swipe: Swipe) -> bool:
-        """Record your swipe as a rating. Returns False if the profile was never captured."""
+    def record_swipe(self, swipe: Swipe, origin: str = "app") -> bool:
+        """Record a swipe as a rating (origin 'app' = yours, 'auto' = the bot's).
+
+        Returns False if the profile was never captured."""
         with db.session(self.db_path) as conn:
             pid = db.find_profile_id(conn, self.source, swipe.user_id)
             if pid is None:
                 self.counts.unknown_swipes += 1
                 return False
-            db.add_rating(conn, pid, swipe.liked, origin="app")
+            db.add_rating(conn, pid, swipe.liked, origin=origin)
         self.counts.swipes += 1
         return True

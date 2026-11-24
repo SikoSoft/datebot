@@ -76,3 +76,12 @@ def test_swipes_become_app_ratings_and_unknown_ones_are_counted(env):
     assert ratings == {db.find_profile_id(conn, "tinder", "a"): True, db.find_profile_id(conn, "tinder", "b"): False}
     assert {r[0] for r in conn.execute("SELECT origin FROM ratings")} == {"app"}
     assert (rec.counts.swipes, rec.counts.unknown_swipes) == (2, 1)
+
+
+def test_bot_swipes_are_recorded_with_auto_origin(env):
+    rec, _, path = env
+    rec.record_profiles([prof("a")])
+    assert rec.record_swipe(Swipe("a", True), origin="auto")
+    conn = db.connect(path)
+    assert db.latest_ratings(conn) == {}
+    assert db.auto_swiped_ids(conn) == {db.find_profile_id(conn, "tinder", "a"): True}
