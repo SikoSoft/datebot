@@ -47,3 +47,8 @@ def test_rejects_non_images_and_unknown_profile(client):
 
 def test_train_needs_enough_ratings(client):
     assert client.post("/api/train").status_code == 400
+
+
+def test_index_served(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "Datebot" in r.text
