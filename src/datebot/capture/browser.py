@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol
 
 from datebot import config
 from datebot.capture import tinder
@@ -32,15 +32,27 @@ def _dump(dump_dir: Path | None, label: str, url: str, status: int, body: str) -
     )
 
 
+class Observer(Protocol):
+    def on_profiles(self, profiles: list[tinder.CapturedProfile]) -> None: ...
+
+    def swipe_origin(self, swipe: tinder.Swipe) -> str: ...
+
+    def on_swipe(self, swipe: tinder.Swipe, recorded: bool, origin: str) -> None: ...
+
+
 def attach(
     context,
     recorder: Recorder,
     hosts: tuple[str, ...] = tinder.HOSTS,
     dump_dir: Path | None = None,
     log: Callable[[str], None] = print,
+    observer: "Observer | None" = None,
 ) -> None:
-    """Listen to every response in `context` (all current and future pages)."""
+    """Listen to every response in `context` (all current and future pages).
 
+    An optional `observer` is told about new recommendations and swipes, and chooses the origin a swipe is
+    recorded under (the auto-swipe bot uses this to tag its own swipes so they never become training labels).
+    """
     def handle(resp) -> None:
         url = resp.url
         if not tinder.is_tinder_url(url, hosts) or not resp.ok:
@@ -53,12 +65,19 @@ def attach(
             profiles = tinder.parse_recs(json.loads(body))
             new = recorder.record_profiles(profiles)
             log(f"recs: {len(profiles)} profiles ({new} new)")
+            if observer:
+                observer.on_profiles(profiles)
         elif (swipe := tinder.parse_swipe(url)) is not None:
             _dump(dump_dir, "like" if swipe.liked else "pass", url, resp.status, resp.text())
-            if recorder.record_swipe(swipe):
-                log(f"swipe: {'liked' if swipe.liked else 'passed'} {swipe.user_id}")
+            origin = observer.swipe_origin(swipe) if observer else "app"
+            recorded = recorder.record_swipe(swipe, origin=origin)
+            who = "bot" if origin == "auto" else "you"
+            if recorded:
+                log(f"swipe ({who}): {'liked' if swipe.liked else 'passed'} {swipe.user_id}")
             else:
                 log(f"swipe on a profile we never captured ({swipe.user_id}); skipped")
+            if observer:
+                observer.on_swipe(swipe, recorded, origin)
 
     def on_response(resp) -> None:
         try:
