@@ -47,6 +47,26 @@ never rejected on that basis. Keywords match whole words in the bio and prompts 
 "non-smoker", but will match "non smoker", so use phrases carefully). `--require` rejects profiles that mention
 none of the given words.
 
+## Capturing from Tinder (web)
+
+```bash
+uv sync --extra embed --extra ui --extra capture
+uv run datebot capture tinder          # opens Chrome with its own saved profile; log in and swipe as normal
+uv run datebot embed && uv run datebot train
+```
+
+Capture is **passive**: you log in and swipe yourself, and datebot only listens to the responses the page
+already receives. Every profile shown is stored with its photos, and each of your likes/passes/super likes
+becomes a labeled rating (`origin = app`). Profiles you were shown but have not swiped appear in the rating UI.
+
+- If Tinder rejects the automated Chrome at login, start your own Chrome with
+  `--remote-debugging-port=9222 --user-data-dir=/some/dir`, log in there, and run
+  `datebot capture tinder --cdp http://localhost:9222` (then reload the Tinder tab).
+- Tinder has no public API. Endpoint paths come from community docs, but the response fields are
+  best-effort. If parsing finds nothing, run with `--dump ./dump` and check the raw responses.
+- Using Tinder with automation tools is against its terms of service; account restrictions are possible.
+  Capture only reads; it never swipes for you.
+
 ## Resetting
 
 - `datebot reset-model` (or the UI button): forget the trained model; ratings are kept, so you can retrain.
@@ -58,5 +78,6 @@ none of the given words.
 - [x] Storage, embeddings, model, CLI, rating UI
 - [x] Bio/prompt text features
 - [x] Hard filters (age, distance, deal-breakers)
-- [ ] Capture profiles and swipes from Tinder / Hinge / Badoo
+- [x] Capture profiles and swipes from Tinder web
+- [ ] Capture from Badoo web and Hinge
 - [ ] Auto-swipe with a confidence band (right above high, left below low, review queue in between)
