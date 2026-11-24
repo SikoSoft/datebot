@@ -64,3 +64,10 @@ def test_autoswipe_refuses_without_a_model(tmp_path, monkeypatch):
     monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
     r = runner.invoke(app, ["autoswipe", "tinder", "--live"])
     assert r.exit_code == 1 and "No trained model" in r.output
+
+
+def test_autoswipe_badoo_exists_and_refuses_without_a_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    r = runner.invoke(app, ["autoswipe", "badoo", "--live"])
+    assert r.exit_code == 1 and "No trained model" in r.output
+    assert "--like-key" in runner.invoke(app, ["autoswipe", "badoo", "--help"]).output
