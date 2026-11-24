@@ -111,20 +111,11 @@ def stats() -> None:
     with db.session() as conn:
         ratings = db.latest_ratings(conn)
         total = conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
+        auto = len(db.auto_swiped_ids(conn))
+        unrated = len(db.unrated_profile_ids(conn))
     likes = sum(ratings.values())
-    typer.echo(f"{total} profiles, {len(ratings)} rated ({likes} likes, {len(ratings) - likes} passes), "
-               f"{total - len(ratings)} unrated")
-
-
-@app.command()
-def ui(host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Start the local rating UI (needs the `ui` extra: uv sync --extra ui)."""
-    import uvicorn
-
-    from datebot.web.app import create_app
-
-    typer.echo(f"Rating UI at http://{host}:{port}")
-    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+    typer.echo(f"{total} profiles, {len(ratings)} rated by you ({likes} likes, {len(ratings) - likes} passes), "
+               f"{auto} auto-swiped, {unrated} unrated")
 
 
 filters_app = typer.Typer(help="Hard deal-breakers applied before the model.", no_args_is_help=True)

@@ -31,9 +31,9 @@ def _stats(conn) -> dict:
     ratings = db.latest_ratings(conn)
     total = conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
     likes = sum(ratings.values())
-    unrated = total - len(ratings)
+    unrated = len(db.unrated_profile_ids(conn))
     return {"total": total, "rated": len(ratings), "likes": likes, "passes": len(ratings) - likes,
-            "unrated": unrated, "hidden": unrated - len(filters.eligible_unrated(conn)),
+            "auto_swiped": len(db.auto_swiped_ids(conn)), "unrated": unrated, "hidden": unrated - len(filters.eligible_unrated(conn)),
             "models": model.list_models()}
 
 

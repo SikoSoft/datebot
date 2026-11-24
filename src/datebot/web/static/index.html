@@ -99,7 +99,7 @@ const post = (path, json) => api(path, { method: 'POST', headers: { 'Content-Typ
 const say = t => { $('msg').textContent = t; };
 
 function renderStats(s) {
-  $('stats').textContent = `${s.rated} rated (${s.likes}♥ / ${s.passes}✕) · ${s.unrated - s.hidden} left` + (s.models.length ? ` · model: ${s.models.join(', ')}` : ' · no model');
+  $('stats').textContent = `${s.rated} rated (${s.likes}♥ / ${s.passes}✕) · ${s.unrated - s.hidden} left` + (s.auto_swiped ? ` · ${s.auto_swiped} auto-swiped` : '') + (s.models.length ? ` · model: ${s.models.join(', ')}` : ' · no model');
   $('hiddenCount').textContent = s.hidden ? `(${s.hidden} hidden)` : '';
 }
 

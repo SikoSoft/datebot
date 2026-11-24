@@ -14,7 +14,7 @@ def test_import_stats_and_reset_flow(tmp_path, monkeypatch):
         Image.new("RGB", (8, 8), "red").save(src / name / "1.png")
 
     assert "Imported 2" in runner.invoke(app, ["import", str(src)]).output
-    assert "2 profiles, 0 rated" in runner.invoke(app, ["stats"]).output
+    assert "2 profiles, 0 rated by you" in runner.invoke(app, ["stats"]).output
     assert "No model" in runner.invoke(app, ["reset-model"]).output
     assert "Deleted 0" in runner.invoke(app, ["reset-ratings", "--yes"]).output
 
