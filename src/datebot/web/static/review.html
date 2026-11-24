@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datebot review</title>
+<style>
+  :root { --bg:#f6f5f3; --fg:#1d1d1f; --card:#fff; --muted:#6e6e73; --like:#1f9d55; --pass:#d64545; --line:#e3e1dd; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#f2f2f2; --card:#1e1e1e; --muted:#9a9aa0; --line:#2e2e2e; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; }
+  a.sm, button.sm { padding:7px 12px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; cursor:pointer; font-size:13px; text-decoration:none; }
+  button.sm[aria-pressed=true] { border-color:var(--fg); font-weight:600; }
+  main { max-width:760px; margin:16px auto; padding:0 16px; }
+  #summary, .hint { color:var(--muted); font-size:13px; }
+  .tabs { display:flex; gap:8px; margin:12px 0; }
+  .item { display:flex; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:10px; }
+  .thumbs { display:flex; gap:4px; flex:none; }
+  .thumbs img { width:84px; height:112px; object-fit:cover; border-radius:8px; background:#000; }
+  .body { flex:1; min-width:0; }
+  .body h3 { margin:0; font-size:16px; }
+  .body p { margin:4px 0; color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
+  .tag { display:inline-block; padding:1px 9px; border-radius:99px; font-size:12px; font-weight:600; color:#fff; }
+  .tag.like { background:var(--like); } .tag.pass { background:var(--pass); }
+  .score { font-weight:600; margin-left:6px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; align-items:center; }
+  .verdict { font-size:13px; }
+  .empty { padding:40px 16px; text-align:center; color:var(--muted); }
+  @media (max-width:520px) { .thumbs img:nth-child(n+2) { display:none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Review queue</h1>
+  <div id="summary"></div>
+  <a class="sm" href="/">← Rate profiles</a>
+</header>
+<main>
+  <div class="hint">Your verdicts here become training ratings. The bot's own swipes never do.</div>
+  <div class="tabs">
+    <button class="sm" id="tabPending" aria-pressed="true">Left to you</button>
+    <button class="sm" id="tabAuto" aria-pressed="false">Bot's swipes</button>
+    <label class="hint" id="onlyWrap" style="display:none;align-self:center"><input type="checkbox" id="onlyNew" checked> only unreviewed</label>
+  </div>
+  <div id="list"></div>
+  <div id="msg" class="hint"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let data = null, tab = 'pending';
+
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+};
+
+async function rate(id, liked) {
+  try {
+    await api('/api/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_id: id, liked }) });
+    await load();
+  } catch (e) { $('msg').textContent = e.message; }
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function button(label, onclick) {
+  const b = el('button', 'sm', label);
+  b.onclick = onclick;
+  return b;
+}
+
+function item(p, kind) {
+  const box = el('div', 'item');
+  const thumbs = el('div', 'thumbs');
+  p.photos.forEach(src => { const i = el('img'); i.src = src; i.alt = ''; i.loading = 'lazy'; thumbs.append(i); });
+  const body = el('div', 'body');
+  const h = el('h3', null, `${p.name || 'Unnamed'}${p.age ? ', ' + p.age : ''}`);
+  if (p.score != null) h.append(el('span', 'score', `${Math.round(p.score)}`));
+  body.append(h);
+  if (kind === 'auto') {
+    const row = el('div', 'row');
+    row.append(el('span', 'tag ' + (p.bot_liked ? 'like' : 'pass'), p.bot_liked ? 'Bot liked' : 'Bot passed'));
+    row.append(el('span', 'hint', p.at));
+    body.append(row);
+  }
+  if (p.bio) body.append(el('p', null, p.bio.length > 220 ? p.bio.slice(0, 220) + '…' : p.bio));
+  const row = el('div', 'row');
+  if (kind === 'auto' && p.yours != null) {
+    const agree = p.yours === p.bot_liked;
+    row.append(el('span', 'verdict', agree ? `You agreed (${p.yours ? 'like' : 'pass'})` : `You disagreed: you ${p.yours ? 'like' : 'pass'}`));
+    row.append(button('Change', () => rate(p.id, !p.yours)));
+  } else {
+    row.append(button('✕ I pass', () => rate(p.id, false)), button('♥ I like', () => rate(p.id, true)));
+  }
+  body.append(row);
+  box.append(thumbs, body);
+  return box;
+}
+
+function render() {
+  const list = $('list');
+  list.replaceChildren();
+  const s = data.summary;
+  $('summary').textContent = `${s.auto} bot swipes · ${s.unreviewed} unreviewed · ${s.agreed} agreed · ${s.disagreed} disagreed`;
+  $('onlyWrap').style.display = tab === 'auto' ? '' : 'none';
+  let items = tab === 'auto' ? data.auto : data.pending;
+  if (tab === 'auto' && $('onlyNew').checked) items = items.filter(a => a.yours == null);
+  if (!items.length) {
+    list.append(el('div', 'empty', tab === 'auto'
+      ? (data.auto.length ? 'Nothing unreviewed.' : 'The bot has not swiped yet.')
+      : (data.model_active ? 'No cards waiting.' : 'Train a model to see scored cards.')));
+    return;
+  }
+  items.forEach(p => list.append(item(p, tab)));
+}
+
+function setTab(t) {
+  tab = t;
+  $('tabPending').setAttribute('aria-pressed', t === 'pending');
+  $('tabAuto').setAttribute('aria-pressed', t === 'auto');
+  if (data) render();
+}
+$('tabPending').onclick = () => setTab('pending');
+$('tabAuto').onclick = () => setTab('auto');
+$('onlyNew').onchange = () => render();
+
+async function load() {
+  try { data = await api('/api/review'); render(); } catch (e) { $('msg').textContent = e.message; }
+}
+load();
+</script>
+</body>
+</html>
