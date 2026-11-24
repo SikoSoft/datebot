@@ -65,3 +65,40 @@ def test_most_uncertain_prefers_midpoint(conn):
     trained = model.train(conn, EMBED)
     ranked = [pid for pid, _ in model.most_uncertain(conn, trained)]
     assert ranked[0] == ambiguous and ranked.index(clear) > 0
+
+
+def add_with_text(conn, text_vec, rng, liked):
+    """Profile whose photos are pure noise, so only the bio carries signal."""
+    pid = add(conn, np.zeros(8), rng, liked)
+    conn.execute("UPDATE photos SET embedding = ? WHERE profile_id = ?",
+                 (rng.normal(0, 1, 8).astype(np.float32).tobytes(), pid))
+    db.set_text_embedding(conn, pid, text_vec + rng.normal(0, 0.2, 8), EMBED)
+    return pid
+
+
+def test_learns_from_bio_text_when_photos_are_noise(conn):
+    rng = np.random.default_rng(1)
+    liked_bio, passed_bio = np.ones(8), -np.ones(8)
+    for _ in range(15):
+        add_with_text(conn, liked_bio, rng, True)
+        add_with_text(conn, passed_bio, rng, False)
+    trained = model.train(conn, EMBED)
+    assert trained.cv_accuracy > 0.9
+    hi = add_with_text(conn, liked_bio, rng, None)
+    lo = add_with_text(conn, passed_bio, rng, None)
+    assert model.score_profile(conn, trained, hi) > 80 > 20 > model.score_profile(conn, trained, lo)
+
+
+def test_profiles_without_bio_still_score(conn):
+    rng, good, _ = seed(conn)
+    trained = model.train(conn, EMBED)
+    assert 0 <= model.score(trained, np.stack([good, good])) <= 100
+
+
+def test_stale_model_is_ignored(conn):
+    seed(conn)
+    trained = model.train(conn, EMBED, name="old")
+    trained.feature_version = 1
+    import joblib
+    joblib.dump(trained, model._path("old"))
+    assert model.load("old") is None

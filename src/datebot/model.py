@@ -13,16 +13,21 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from datebot import config, db
 
 MIN_PER_CLASS = 3  # need at least this many likes and passes to train
+FEATURE_VERSION = 2  # bump when featurize() changes; older saved models are ignored and must be retrained
 
 
-def featurize(embeddings: np.ndarray) -> np.ndarray:
-    """Collapse a profile's (n_photos, dim) embeddings into one feature vector.
+def featurize(embeddings: np.ndarray, text_embedding: np.ndarray | None = None) -> np.ndarray:
+    """Collapse a profile into one feature vector: [photo mean, photo max, bio text, has_text].
 
-    Mean captures the overall look; max keeps standout photos from being averaged away.
+    Mean captures the overall look; max keeps standout photos from being averaged away. The text block
+    is zeros (with has_text = 0) when the profile has no bio, so photo-only profiles still work.
     """
     if embeddings.size == 0:
         raise ValueError("profile has no embeddings")
-    return np.concatenate([embeddings.mean(axis=0), embeddings.max(axis=0)])
+    dim = embeddings.shape[1]
+    text = np.zeros(dim, dtype=np.float32) if text_embedding is None else np.asarray(text_embedding, dtype=np.float32)
+    has_text = np.array([0.0 if text_embedding is None else 1.0], dtype=np.float32)
+    return np.concatenate([embeddings.mean(axis=0), embeddings.max(axis=0), text, has_text])
 
 
 @dataclass
@@ -33,6 +38,7 @@ class Trained:
     n_likes: int
     cv_accuracy: float | None
     trained_at: str
+    feature_version: int = FEATURE_VERSION
 
 
 def _path(name: str) -> Path:
@@ -45,7 +51,7 @@ def training_set(conn: sqlite3.Connection, embed_model: str) -> tuple[np.ndarray
         emb = db.profile_embeddings(conn, pid, embed_model)
         if emb.size == 0:
             continue
-        X.append(featurize(emb))
+        X.append(featurize(emb, db.text_embedding(conn, pid, embed_model)))
         y.append(int(liked))
     if not X:
         return np.empty((0, 0)), np.empty((0,), dtype=int)
@@ -74,7 +80,10 @@ def train(conn: sqlite3.Connection, embed_model: str, name: str = "default") -> 
 
 def load(name: str = "default") -> Trained | None:
     path = _path(name)
-    return joblib.load(path) if path.exists() else None
+    if not path.exists():
+        return None
+    trained = joblib.load(path)
+    return trained if getattr(trained, "feature_version", 1) == FEATURE_VERSION else None  # stale: retrain
 
 
 def reset(name: str = "default") -> bool:
@@ -90,15 +99,17 @@ def list_models() -> list[str]:
     return sorted(p.stem for p in config.models_dir().glob("*.joblib"))
 
 
-def score(trained: Trained, embeddings: np.ndarray) -> float:
+def score(trained: Trained, embeddings: np.ndarray, text_embedding: np.ndarray | None = None) -> float:
     """Score a profile 0-100 (probability you'd like them)."""
-    p = trained.clf.predict_proba(featurize(embeddings).reshape(1, -1))[0, 1]
+    p = trained.clf.predict_proba(featurize(embeddings, text_embedding).reshape(1, -1))[0, 1]
     return float(p * 100)
 
 
 def score_profile(conn: sqlite3.Connection, trained: Trained, profile_id: int) -> float | None:
     emb = db.profile_embeddings(conn, profile_id, trained.embed_model)
-    return None if emb.size == 0 else score(trained, emb)
+    if emb.size == 0:
+        return None
+    return score(trained, emb, db.text_embedding(conn, profile_id, trained.embed_model))
 
 
 def most_uncertain(
