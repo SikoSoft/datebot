@@ -34,6 +34,11 @@
   .drop { margin-top:16px; padding:16px; border:2px dashed var(--line); border-radius:12px; text-align:center; color:var(--muted); }
   .drop.over { border-color:var(--like); color:var(--fg); }
   .drop input[type=text], .drop input[type=number] { padding:6px 8px; margin:4px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); width:130px; }
+  details.filters { margin-top:16px; padding:10px 14px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
+  details.filters summary { cursor:pointer; font-weight:600; }
+  details.filters label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted); }
+  details.filters input { padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); width:100%; }
+  details.filters .pair { display:flex; gap:8px; }
   .empty { padding:48px 16px; text-align:center; color:var(--muted); }
   #msg { min-height:20px; margin-top:12px; color:var(--muted); font-size:13px; }
 </style>
@@ -56,6 +61,20 @@
   </div>
   <div class="row"><button class="sm" id="undo">↶ Undo</button></div>
   <div class="hint">Keys: ← pass · → like · Z undo · ↑/↓ photos</div>
+  <details class="filters">
+    <summary>Deal-breakers <span id="hiddenCount" style="font-weight:400;color:var(--muted)"></span></summary>
+    <div class="pair">
+      <div style="flex:1"><label for="fMin">Min age</label><input id="fMin" type="number" min="18" max="99"></div>
+      <div style="flex:1"><label for="fMax">Max age</label><input id="fMax" type="number" min="18" max="99"></div>
+      <div style="flex:1"><label for="fDist">Max distance (km)</label><input id="fDist" type="number" min="1"></div>
+    </div>
+    <label for="fBlock">Reject if bio/prompts mention (comma-separated)</label>
+    <input id="fBlock" type="text" placeholder="smoker, 420">
+    <label for="fReq">Reject unless they mention one of (comma-separated)</label>
+    <input id="fReq" type="text" placeholder="hiking, climbing">
+    <div class="row" style="margin-top:10px"><button class="sm" id="saveFilters">Save filters</button></div>
+    <div class="hint">Profiles missing an age or distance are never rejected on that basis.</div>
+  </details>
   <div class="drop" id="drop">
     <div>Drop a profile's photos here to add them (or <label style="text-decoration:underline;cursor:pointer">browse<input id="file" type="file" accept="image/*" multiple hidden></label>)</div>
     <div><input id="name" type="text" placeholder="name"><input id="age" type="number" placeholder="age" min="18" max="99"><input id="bio" type="text" placeholder="bio" style="width:240px"></div>
@@ -76,8 +95,26 @@ const post = (path, json) => api(path, { method: 'POST', headers: { 'Content-Typ
 const say = t => { $('msg').textContent = t; };
 
 function renderStats(s) {
-  $('stats').textContent = `${s.rated} rated (${s.likes}♥ / ${s.passes}✕) · ${s.unrated} left` + (s.models.length ? ` · model: ${s.models.join(', ')}` : ' · no model');
+  $('stats').textContent = `${s.rated} rated (${s.likes}♥ / ${s.passes}✕) · ${s.unrated - s.hidden} left` + (s.models.length ? ` · model: ${s.models.join(', ')}` : ' · no model');
+  $('hiddenCount').textContent = s.hidden ? `(${s.hidden} hidden)` : '';
 }
+
+const list = v => v.split(',').map(x => x.trim()).filter(Boolean);
+const num = v => (v === '' ? null : Number(v));
+async function loadFilters() {
+  const f = await api('/api/filters');
+  $('fMin').value = f.min_age ?? ''; $('fMax').value = f.max_age ?? ''; $('fDist').value = f.max_distance_km ?? '';
+  $('fBlock').value = f.blocked_keywords.join(', '); $('fReq').value = f.required_keywords.join(', ');
+}
+$('saveFilters').onclick = async () => {
+  try {
+    const r = await api('/api/filters', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      min_age: num($('fMin').value), max_age: num($('fMax').value), max_distance_km: num($('fDist').value),
+      blocked_keywords: list($('fBlock').value), required_keywords: list($('fReq').value) }) });
+    say(`Filters saved. ${r.stats.hidden} profile(s) hidden.`);
+    await load();
+  } catch (e) { say(e.message); }
+};
 
 function render() {
   const stage = $('stage');
@@ -178,6 +215,7 @@ drop.addEventListener('drop', e => upload(e.dataTransfer.files));
 $('file').onchange = e => upload(e.target.files);
 
 load().catch(e => say(e.message));
+loadFilters().catch(() => {});
 </script>
 </body>
 </html>
