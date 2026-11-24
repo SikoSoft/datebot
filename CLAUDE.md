@@ -35,13 +35,13 @@ Datebot: learns the user's dating preferences from their own swipes and scores p
 
 ## Status (as of 2026-11-24)
 
-Done: rating UI, local model, resettable training, hard filters, text features, Tinder passive capture, evaluation tooling, Tinder auto-swipe (observe-only by default, `--live` to act), Badoo traffic-discovery capture.
+Done: rating UI, local model, resettable training, hard filters, text features, Tinder passive capture, evaluation tooling, Tinder auto-swipe (observe-only by default, `--live` to act), Badoo web capture (parser verified on real traffic; `capture/badoo.py`, `badoo_browser.py`; `discover.py` remains for mapping new sites).
 
 **Nothing has been tested against live Tinder or Badoo.** Tinder response field names and the card-order/arrow-key assumptions in auto-swipe are unverified; `capture tinder --dump DIR` saves raw responses to debug.
 
 ## Next steps (continue in this order)
 
-1. **Badoo parser (blocked on user data).** User runs `datebot capture badoo` (opens a normal Chrome via debugging port so Google sign-in works), swipes ~15 cards, closes it. Then read `data/badoo-dump/` (use the printed endpoint summary), write `capture/badoo.py` parsers (profiles + swipes) from the real samples with tests built from them, wire it into a `Recorder(source="badoo")`, and replace the discovery-only command with real capture. Keep the dump private.
+1. **Confirm Badoo vote codes with the user** (2=like, 3=pass is assumed; see `capture/badoo.py`) after their first real `capture badoo` session, via `datebot stats`.
 2. Possibly Badoo auto-swipe, reusing `autoswipe/` (needs the Badoo card/keys behaviour confirmed first).
 3. Hinge is mobile-only: needs phone mirroring or an emulator; ask the user before starting.
 4. Have the user collect ~100 real ratings, run `datebot eval`, and tune from the report.

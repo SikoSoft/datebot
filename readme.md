@@ -67,15 +67,14 @@ becomes a labeled rating (`origin = app`). Profiles you were shown but have not 
 - Using Tinder with automation tools is against its terms of service; account restrictions are possible.
   Capture only reads; it never swipes for you.
 
-## Capturing from Badoo (web) - discovery step
-
-Badoo's web API is undocumented and not yet mapped, so there is no profile parser yet. This step only records traffic so one can be written from real samples (Bumble, a sibling app, is described in [this write-up](https://medium.com/independent-security-evaluators/reverse-engineering-bumbles-api-a2a0d39b3a87); Badoo may differ).
+## Capturing from Badoo (web)
 
 ```bash
-uv run datebot capture badoo            # opens a normal Chrome: log in yourself (Google sign-in works), swipe ~15 cards, close the window
+uv run datebot capture badoo            # opens a normal Chrome (logins are remembered); swipe as usual, close it to stop
+uv run datebot capture badoo --dump DIR # also save raw API traffic (private: holds session ids and other people's data)
 ```
 
-Saved to `data/badoo-dump/` (override with `--dump`): one JSON file per API call, plus an endpoint summary when you close Chrome. Headers and cookies are never saved, but bodies and URLs may hold session ids and other people's data, so keep the dump private.
+Same idea as Tinder: it only listens. Profiles from the encounters feed are stored, and your own swipes become labeled ratings. The wire format was verified against real traffic. One assumption is not: vote code 2 = like and 3 = pass (taken from Bumble's [documented protocol](https://medium.com/independent-security-evaluators/reverse-engineering-bumbles-api-a2a0d39b3a87)). Check it with `datebot stats` after a session: your like count should match what you actually liked. Badoo gives a city but no distance, so the distance filter does not apply. Auto-swipe is Tinder-only for now.
 
 ## Auto-swipe (Tinder web)
 
@@ -128,5 +127,6 @@ With under about 50 ratings the report warns that results are rough.
 - [x] Hard filters (age, distance, deal-breakers)
 - [x] Capture profiles and swipes from Tinder web
 - [x] Evaluation tooling (`datebot eval`)
-- [ ] Capture from Badoo web (discovery step done; parser waits on real traffic samples) and Hinge
+- [x] Capture from Badoo web
+- [ ] Capture from Hinge (mobile-only)
 - [x] Auto-swipe with a confidence band (Tinder web; the middle band is left to you in the app)
