@@ -88,13 +88,28 @@ def attach(
     context.on("response", on_response)
 
 
-def pump(context, tick_ms: int = 500) -> None:
-    """Keep Playwright's event loop running until every page is closed."""
+class PageDriver:
+    """Presses keys on the Tinder tab, like a person at the keyboard."""
+
+    def __init__(self, page):
+        self.page = page
+
+    def press(self, key: str) -> None:
+        self.page.keyboard.press(key)
+
+    def wait(self, ms: int) -> None:
+        self.page.wait_for_timeout(ms)
+
+
+def pump(context, tick_ms: int = 500, tick: Callable[[], bool] | None = None) -> None:
+    """Keep Playwright's event loop running until every page is closed (or `tick()` returns False)."""
     from playwright.sync_api import Error
 
     try:
         while context.pages:
             context.pages[0].wait_for_timeout(tick_ms)
+            if tick is not None and not tick():
+                break
     except Error:
         pass  # browser was closed
 
@@ -104,6 +119,9 @@ def run(
     cdp: str | None = None,
     dump_dir: Path | None = None,
     log: Callable[[str], None] = print,
+    observer: Observer | None = None,
+    tick: Callable[[object], bool] | None = None,
+    tick_ms: int = 500,
 ) -> None:
     """Open (or attach to) Chrome and record until it is closed.
 
@@ -124,5 +142,5 @@ def run(
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(START_URL)
             log("Chrome opened. Log in to Tinder yourself, then swipe as usual. Close the window to stop.")
-        attach(context, recorder, dump_dir=dump_dir, log=log)
-        pump(context)
+        attach(context, recorder, dump_dir=dump_dir, log=log, observer=observer)
+        pump(context, tick_ms, (lambda: tick(context)) if tick else None)
