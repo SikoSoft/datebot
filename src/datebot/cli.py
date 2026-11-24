@@ -201,3 +201,26 @@ def capture_tinder(
     typer.echo(f"Done: {c.new} new profile(s), {c.swipes} swipe(s) recorded"
                + (f", {c.unknown_swipes} on uncaptured profiles" if c.unknown_swipes else "")
                + (f", {c.failed} skipped (photos failed)" if c.failed else "") + ".")
+
+
+@app.command("eval")
+def eval_(
+    like_precision: float = typer.Option(0.9, min=0.5, max=1.0, help="Target share of auto-liked profiles you really like."),
+    pass_precision: float = typer.Option(0.95, min=0.5, max=1.0, help="Target share of auto-passed profiles you really pass."),
+) -> None:
+    """Report how well the model predicts your taste, what it learns from, and safe auto-swipe thresholds."""
+    from datebot import evaluate
+    from datebot.embed import EMBED_ID
+
+    with db.session() as conn:
+        try:
+            report = evaluate.run(conn, EMBED_ID, like_precision, pass_precision)
+        except ValueError as e:
+            typer.secho(str(e), fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+        def describe(pid: int) -> str:
+            p = db.get_profile(conn, pid)
+            return f"#{pid} {p.name or ''} {db.photo_paths(conn, pid)[0]}".replace("  ", " ")
+
+        typer.echo(evaluate.format_report(report, describe))

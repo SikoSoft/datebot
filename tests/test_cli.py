@@ -34,3 +34,27 @@ def test_filters_set_show_clear(tmp_path, monkeypatch):
 def test_capture_tinder_is_registered():
     out = runner.invoke(app, ["capture", "tinder", "--help"]).output
     assert "--cdp" in out and "--dump" in out
+
+
+def test_eval_reports_and_explains_when_there_is_nothing_to_evaluate(tmp_path, monkeypatch):
+    import numpy as np
+
+    from datebot import db
+    from datebot.embed import EMBED_ID
+
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    empty = runner.invoke(app, ["eval"])
+    assert empty.exit_code == 1 and "No rated profiles" in empty.output
+
+    rng = np.random.default_rng(0)
+    with db.session() as conn:
+        for i in range(40):
+            liked = i % 2 == 0
+            pid = db.add_profile(conn, "manual", [f"{i}.jpg"], name=f"P{i}")
+            photo_id = conn.execute("SELECT id FROM photos WHERE profile_id=?", (pid,)).fetchone()[0]
+            db.set_embedding(conn, photo_id, (1 if liked else -1) + rng.normal(0, 1.5, 8), EMBED_ID)
+            db.add_rating(conn, pid, liked)
+    out = runner.invoke(app, ["eval"])
+    assert out.exit_code == 0
+    assert "Ratings: 40 (20 likes, 20 passes" in out.output and "ROC AUC" in out.output
+    assert "Biggest surprises" in out.output
