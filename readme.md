@@ -67,6 +67,16 @@ becomes a labeled rating (`origin = app`). Profiles you were shown but have not 
 - Using Tinder with automation tools is against its terms of service; account restrictions are possible.
   Capture only reads; it never swipes for you.
 
+## Capturing from Badoo (web) - discovery step
+
+Badoo's web API is undocumented and not yet mapped, so there is no profile parser yet. This step only records traffic so one can be written from real samples (Bumble, a sibling app, is described in [this write-up](https://medium.com/independent-security-evaluators/reverse-engineering-bumbles-api-a2a0d39b3a87); Badoo may differ).
+
+```bash
+uv run datebot capture badoo            # log in yourself, swipe ~15 cards, close the window
+```
+
+Saved to `data/badoo-dump/` (override with `--dump`): one JSON file per API call, plus an endpoint summary when you close Chrome. Headers and cookies are never saved, but bodies and URLs may hold session ids and other people's data, so keep the dump private.
+
 ## Auto-swipe (Tinder web)
 
 **This acts on your account. Automating swipes breaks Tinder's terms and can get the account restricted or banned.** Use at your own risk, and start without `--live`.
@@ -118,5 +128,5 @@ With under about 50 ratings the report warns that results are rough.
 - [x] Hard filters (age, distance, deal-breakers)
 - [x] Capture profiles and swipes from Tinder web
 - [x] Evaluation tooling (`datebot eval`)
-- [ ] Capture from Badoo web and Hinge
+- [ ] Capture from Badoo web (discovery step done; parser waits on real traffic samples) and Hinge
 - [x] Auto-swipe with a confidence band (Tinder web; the middle band is left to you in the app)
