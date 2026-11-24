@@ -45,17 +45,29 @@ def _path(name: str) -> Path:
     return config.models_dir() / f"{name}.joblib"
 
 
-def training_set(conn: sqlite3.Connection, embed_model: str) -> tuple[np.ndarray, np.ndarray]:
-    X, y = [], []
+def training_data(conn: sqlite3.Connection, embed_model: str) -> tuple[list[int], np.ndarray, np.ndarray]:
+    """(profile ids, features, labels) for every rated profile that has embeddings, oldest rating first."""
+    ids, X, y = [], [], []
     for pid, liked in db.latest_ratings(conn).items():
         emb = db.profile_embeddings(conn, pid, embed_model)
         if emb.size == 0:
             continue
+        ids.append(pid)
         X.append(featurize(emb, db.text_embedding(conn, pid, embed_model)))
         y.append(int(liked))
     if not X:
-        return np.empty((0, 0)), np.empty((0,), dtype=int)
-    return np.stack(X), np.array(y)
+        return [], np.empty((0, 0)), np.empty((0,), dtype=int)
+    return ids, np.stack(X), np.array(y)
+
+
+def training_set(conn: sqlite3.Connection, embed_model: str) -> tuple[np.ndarray, np.ndarray]:
+    _, X, y = training_data(conn, embed_model)
+    return X, y
+
+
+def make_classifier() -> LogisticRegression:
+    """The classifier used for training and for evaluation, so both measure the same thing."""
+    return LogisticRegression(C=0.5, class_weight="balanced", max_iter=2000)
 
 
 def train(conn: sqlite3.Connection, embed_model: str, name: str = "default") -> Trained:
@@ -67,7 +79,7 @@ def train(conn: sqlite3.Connection, embed_model: str, name: str = "default") -> 
             f"Need at least {MIN_PER_CLASS} likes and {MIN_PER_CLASS} passes with embeddings "
             f"(have {likes} likes, {passes} passes)."
         )
-    clf = LogisticRegression(C=0.5, class_weight="balanced", max_iter=2000)
+    clf = make_classifier()
     cv = None
     folds = min(5, likes, passes)
     if folds >= 2:
