@@ -194,6 +194,27 @@ def capture_tinder(
                + (f", {c.failed} skipped (photos failed)" if c.failed else "") + ".")
 
 
+@capture_app.command("badoo")
+def capture_badoo(
+    dump: Path = typer.Option(None, help="Where to save the raw traffic (default: data/badoo-dump)."),
+    cdp: Optional[str] = typer.Option(None, help="Attach to your own Chrome, e.g. http://localhost:9222."),
+) -> None:
+    """DISCOVERY: save badoo.com's API traffic so its format can be mapped (no profile parsing yet).
+
+    You log in and swipe yourself; datebot only listens. Keep the dump private: it holds other
+    people's data and possibly session identifiers.
+    """
+    from datebot import config
+    from datebot.capture import discover
+
+    out = dump or config.data_dir() / "badoo-dump"
+    try:
+        discover.run(out, cdp=cdp, log=lambda m: typer.echo(f"[badoo] {m}"))
+    except KeyboardInterrupt:
+        pass
+    typer.echo(discover.summarize(out))
+
+
 autoswipe_app = typer.Typer(help="Let the model swipe when it is confident (acts on your account!).", no_args_is_help=True)
 app.add_typer(autoswipe_app, name="autoswipe")
 
