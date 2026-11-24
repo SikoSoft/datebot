@@ -91,6 +91,7 @@ uv run datebot autoswipe tinder --live   # actually presses like/pass when the m
 - After each press it checks the swipe Tinder received. Wrong profile, wrong direction or no swipe halts it immediately.
 - Limits: `--max-swipes` per run (20), `--daily-cap` (60), `--min-delay` seconds between swipes (4), and at least `--min-ratings` of your own ratings (50).
 - Its swipes are stored with origin `auto` and are never used as training labels. Every decision is logged to `data/autoswipe.jsonl`.
+- Review what it did at `/review` in the UI (`datebot ui`): the bot's swipes with photo, score and your agree/disagree buttons, plus the cards it left for you. Your verdicts become training ratings, so the model learns where it was wrong.
 - Untested against live Tinder: the card-order and arrow-key assumptions are exactly what the safety checks are for. Run observe-only first.
 
 ## Is it learning my taste?
@@ -130,3 +131,4 @@ With under about 50 ratings the report warns that results are rough.
 - [x] Capture from Badoo web
 - [ ] Capture from Hinge (mobile-only)
 - [x] Auto-swipe with a confidence band (Tinder web; the middle band is left to you in the app)
+- [x] Review queue UI (audit the bot's swipes, feed back verdicts)

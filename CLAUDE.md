@@ -35,7 +35,7 @@ Datebot: learns the user's dating preferences from their own swipes and scores p
 
 ## Status (as of 2026-11-24)
 
-Done: rating UI, local model, resettable training, hard filters, text features, Tinder passive capture, evaluation tooling, Tinder auto-swipe (observe-only by default, `--live` to act), Badoo web capture (parser verified on real traffic; `capture/badoo.py`, `badoo_browser.py`; `discover.py` remains for mapping new sites).
+Done: rating UI, local model, resettable training, hard filters, text features, Tinder passive capture, evaluation tooling, Tinder auto-swipe (observe-only by default, `--live` to act), review queue UI at `/review` (audit bot swipes, your verdicts become `manual` ratings), Badoo web capture (parser verified on real traffic; `capture/badoo.py`, `badoo_browser.py`; `discover.py` remains for mapping new sites).
 
 **Nothing has been tested against live Tinder or Badoo.** Tinder response field names and the card-order/arrow-key assumptions in auto-swipe are unverified; `capture tinder --dump DIR` saves raw responses to debug.
 
