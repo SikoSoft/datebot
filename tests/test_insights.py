@@ -99,7 +99,7 @@ def test_fake_score_signals():
 
 def test_fake_threshold_excludes_from_stats(tmp_path):
     conn = make_db(tmp_path)
-    scam = db.add_profile(conn, "tinder", "scam", name="S", age=30, bio=None, extra={})
+    scam = db.add_profile(conn, "tinder", [], external_id="scam", name="S", age=30, bio=None, extra={})
     db.add_rating(conn, scam, liked=True)
     base = insights.build(conn, visual=None)
     assert base["summary"]["rated"] == 41 and base["summary"]["fake"]["threshold"] is None
@@ -112,9 +112,9 @@ def test_fake_threshold_excludes_from_stats(tmp_path):
 
 def test_manual_fake_marks_override_heuristic(tmp_path):
     conn = make_db(tmp_path)
-    scam = db.add_profile(conn, "tinder", "scam", name="S", age=30, bio=None, extra={})
+    scam = db.add_profile(conn, "tinder", [], external_id="scam", name="S", age=30, bio=None, extra={})
     db.add_rating(conn, scam, liked=True)
-    real = db.add_profile(conn, "tinder", "real", name="R", age=30, bio="Hiking, dogs and sourdough on weekends", extra={})
+    real = db.add_profile(conn, "tinder", [], external_id="real", name="R", age=30, bio="Hiking, dogs and sourdough on weekends", extra={})
     db.add_rating(conn, real, liked=True)
     db.set_fake_mark(conn, real, True)   # you say fake: excluded although the heuristic scores 0
     db.set_fake_mark(conn, scam, False)  # you say real: kept although the heuristic flags it
@@ -125,3 +125,15 @@ def test_manual_fake_marks_override_heuristic(tmp_path):
     assert insights.build(conn, visual=None)["summary"]["rated"] == 42  # slider off keeps everyone
     db.set_fake_mark(conn, real, None)
     assert db.fake_marks(conn) == {scam: False}
+
+
+def test_embedding_status(tmp_path):
+    conn = db.connect(str(tmp_path / "e.db"))
+    pid = db.add_profile(conn, "tinder", ["a.jpg", "b.jpg"], external_id="e1", name="E", age=30)
+    a = conn.execute("SELECT id FROM photos WHERE path = 'a.jpg'").fetchone()[0]
+    db.add_rating(conn, pid, liked=True)
+    st = insights.build(conn, visual=None)["summary"]["embeddings"]
+    assert st == {"last_at": None, "embedded_photos": 0, "pending_photos": 2, "pending_profiles": 1}
+    db.set_embedding(conn, a, np.zeros(4, dtype=np.float32), insights.embed.EMBED_ID)
+    st = insights.build(conn, visual=None)["summary"]["embeddings"]
+    assert st["last_at"] and st["embedded_photos"] == 1 and st["pending_photos"] == 1

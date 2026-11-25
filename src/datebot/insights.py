@@ -19,7 +19,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
-from datebot import attributes, db, fake, filters
+from datebot import attributes, db, embed, fake, filters
 
 MIN_HIGHLIGHT_N = 8
 HIGHLIGHTS = 12
@@ -350,6 +350,7 @@ def build(conn: sqlite3.Connection, source: str | None = None,
     return {
         "summary": {"rated": n, "likes": likes, "passes": n - likes, "baseline": baseline,
                     "sources": dict(Counter(p.source for p in profiles.values())),
+                    "embeddings": db.embedding_status(conn, embed.EMBED_ID),
                     "visual_covered": covered_visual, "visual_note": visual_note, "source": source,
                     "fake": {"threshold": fake_threshold, "excluded": len(excluded),
                              "excluded_likes": sum(e["liked"] for e in excluded), "examples": excluded[:40]}},

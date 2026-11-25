@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS photos (
     path TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     embedding BLOB,                    -- float32 vector
-    embed_model TEXT
+    embed_model TEXT,
+    embedded_at TEXT                   -- UTC time the embedding was stored (NULL for older ones)
 );
 
 CREATE TABLE IF NOT EXISTS ratings (
@@ -108,6 +109,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for col, ddl in (("text_embedding", "BLOB"), ("text_embed_model", "TEXT")):
         if col not in cols:
             conn.execute(f"ALTER TABLE profiles ADD COLUMN {col} {ddl}")
+    if "embedded_at" not in {r["name"] for r in conn.execute("PRAGMA table_info(photos)")}:
+        conn.execute("ALTER TABLE photos ADD COLUMN embedded_at TEXT")
     conn.commit()
 
 
@@ -304,7 +307,7 @@ def clear_ratings(conn: sqlite3.Connection) -> int:
 
 def set_embedding(conn: sqlite3.Connection, photo_id: int, vec: np.ndarray, model: str) -> None:
     conn.execute(
-        "UPDATE photos SET embedding = ?, embed_model = ? WHERE id = ?",
+        "UPDATE photos SET embedding = ?, embed_model = ?, embedded_at = CURRENT_TIMESTAMP WHERE id = ?",
         (np.asarray(vec, dtype=np.float32).tobytes(), model, photo_id),
     )
 
@@ -314,6 +317,17 @@ def photos_missing_embeddings(conn: sqlite3.Connection, model: str) -> list[tupl
         "SELECT id, path FROM photos WHERE embedding IS NULL OR embed_model != ?", (model,)
     )
     return [(r["id"], r["path"]) for r in rows]
+
+
+def embedding_status(conn: sqlite3.Connection, model: str) -> dict:
+    """How current the stored photo embeddings are: newest embedding time (UTC, None if unknown), and what is missing."""
+    last, embedded = conn.execute(
+        "SELECT MAX(embedded_at), COUNT(*) FROM photos WHERE embedding IS NOT NULL AND embed_model = ?", (model,)
+    ).fetchone()
+    pending = conn.execute(
+        "SELECT COUNT(*), COUNT(DISTINCT profile_id) FROM photos WHERE embedding IS NULL OR embed_model != ?", (model,)
+    ).fetchone()
+    return {"last_at": last, "embedded_photos": embedded, "pending_photos": pending[0], "pending_profiles": pending[1]}
 
 
 def count_unembedded_profiles(conn: sqlite3.Connection, model: str) -> int:
