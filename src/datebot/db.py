@@ -230,6 +230,22 @@ def profile_embeddings(conn: sqlite3.Connection, profile_id: int, model: str) ->
     return np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in rows])
 
 
+def all_photo_embeddings(conn: sqlite3.Connection, model: str) -> tuple[list[int], list[str], np.ndarray]:
+    """(profile id per photo, photo path per photo, (n_photos, dim) embeddings) for every embedded photo."""
+    rows = conn.execute(
+        "SELECT profile_id, path, embedding FROM photos WHERE embed_model = ? AND embedding IS NOT NULL "
+        "ORDER BY profile_id, position",
+        (model,),
+    ).fetchall()
+    if not rows:
+        return [], [], np.empty((0, 0), dtype=np.float32)
+    return (
+        [r["profile_id"] for r in rows],
+        [r["path"] for r in rows],
+        np.stack([np.frombuffer(r["embedding"], dtype=np.float32) for r in rows]),
+    )
+
+
 def undo_last_rating(conn: sqlite3.Connection) -> int | None:
     """Remove your most recent rating made in the UI and return its profile id (None if there is none)."""
     row = conn.execute(

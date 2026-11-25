@@ -311,6 +311,41 @@ for _site in ("tinder", "badoo"):
     autoswipe_app.command(_site, help=f"Swipe automatically on {_site} ONLY when the model is confident (acts on your account!).")(_make_autoswipe(_site))
 
 
+@app.command()
+def explain(
+    group: Optional[list[str]] = typer.Option(None, help="Only these groups: styling, photo type, body, ethnicity (repeatable)."),
+    prompt: Optional[list[str]] = typer.Option(None, help="Extra attribute to test, as a CLIP caption, e.g. 'a photo of a person in a red dress' (repeatable)."),
+    examples: int = typer.Option(0, min=0, help="Show this many top-scoring photos per attribute, to check what CLIP finds."),
+) -> None:
+    """Show which visual attributes (glasses, gym photos, hair, ...) separate your likes from your passes.
+
+    Works after the fact from the stored embeddings: nothing has to be labelled while rating.
+    """
+    from datebot import embed as embedder, explain as ex
+    from datebot.embed import EMBED_ID
+
+    attrs = [a for a in ex.ATTRIBUTES if not group or a.group in group]
+    attrs += [ex.Attribute(p, p, "custom") for p in prompt or []]
+    if not attrs:
+        typer.secho(f"No attributes selected. Groups: {', '.join(ex.GROUPS)}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    with db.session() as conn:
+        pids, paths, emb = db.all_photo_embeddings(conn, EMBED_ID)
+        ratings = db.latest_ratings(conn)
+    if not len(pids):
+        typer.secho("No embedded photos yet. Run: datebot embed", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    text_emb = embedder.embed_texts([a.prompt for a in attrs])
+    try:
+        results = ex.analyse(pids, paths, emb, text_emb, attrs, ratings, examples=examples)
+    except ValueError as e:
+        typer.secho(str(e), fg=typer.colors.RED)
+        raise typer.Exit(1)
+    likes = sum(1 for pid in set(pids) if ratings.get(pid) is True)
+    rated = sum(1 for pid in set(pids) if pid in ratings)
+    typer.echo(ex.format_report(results, likes, rated - likes))
+
+
 @app.command("eval")
 def eval_(
     like_precision: float = typer.Option(0.9, min=0.5, max=1.0, help="Target share of auto-liked profiles you really like."),

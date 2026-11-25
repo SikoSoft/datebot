@@ -71,3 +71,28 @@ def test_autoswipe_badoo_exists_and_refuses_without_a_model(tmp_path, monkeypatc
     r = runner.invoke(app, ["autoswipe", "badoo", "--live"])
     assert r.exit_code == 1 and "No trained model" in r.output
     assert "--like-key" in runner.invoke(app, ["autoswipe", "badoo", "--help"]).output
+
+
+def test_explain_reports_attributes_from_stored_embeddings(tmp_path, monkeypatch):
+    import numpy as np
+
+    from datebot import db, embed
+    from datebot.embed import EMBED_ID
+
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    assert "No embedded photos" in runner.invoke(app, ["explain"]).output
+    rng = np.random.default_rng(0)
+    with db.session() as conn:
+        for i in range(40):
+            liked = i % 2 == 0
+            pid = db.add_profile(conn, "manual", [f"{i}.jpg"], name=f"P{i}")
+            photo_id = conn.execute("SELECT id FROM photos WHERE profile_id=?", (pid,)).fetchone()[0]
+            v = rng.normal(0, 0.3, 8)
+            v[0] += 2 * liked
+            db.set_embedding(conn, photo_id, v / np.linalg.norm(v), EMBED_ID)
+            db.add_rating(conn, pid, liked)
+    monkeypatch.setattr(embed, "embed_texts", lambda texts: np.eye(8)[[0] * len(texts)])
+    out = runner.invoke(app, ["explain", "--group", "styling", "--prompt", "a red dress"])
+    assert out.exit_code == 0, out.output
+    assert "glasses" in out.output and "a red dress" in out.output and "AUC" in out.output
+    assert runner.invoke(app, ["explain", "--group", "nonsense"]).exit_code == 1
