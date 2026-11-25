@@ -63,3 +63,43 @@ def test_eligible_unrated_excludes_filtered_and_rated(home, tmp_path):
     db.add_rating(conn, rated, True)
     assert filters.eligible_unrated(conn, Filters(min_age=21)) == [ok]
     assert filters.eligible_unrated(conn, Filters()) == [young, ok]
+
+
+def test_height_rejects_at_or_above_threshold():
+    f = Filters(reject_height_from_cm=178)
+    assert check(prof(extra={"descriptors": ["Height: 178 cm"]}), f)
+    assert check(prof(extra={"descriptors": ["Height: 185 cm"]}), f)
+    assert check(prof(extra={"descriptors": ["Height: 177 cm"]}), f) is None
+    assert check(prof(extra={"height_cm": 190}), f)
+    assert check(prof(), f) is None  # unknown height never rejects
+
+
+def test_field_keyword_only_matches_inside_its_field():
+    f = Filters(field_keywords={"politics": ["left", "vänster"]})
+    assert check(prof(extra={"descriptors": ["Politics: Left"]}), f)
+    assert check(prof(extra={"descriptors": ["Politics: Vänster"]}), f)
+    assert check(prof(extra={"descriptors": ["Politics: Liberal"]}), f) is None
+    assert check(prof(bio="I left my heart in Rome"), f) is None
+
+
+def test_phrase_keyword_for_hjartat_till_vanster():
+    f = Filters(blocked_keywords=["hjärtat till vänster"])
+    assert check(prof(bio="Med hjärtat till vänster"), f)
+
+
+def test_rule_failing_rated_profiles_are_excluded_from_training(tmp_path, monkeypatch):
+    from datebot import model
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    filters.save(Filters(reject_height_from_cm=178))
+    import numpy as np
+    with db.session() as conn:
+        pids = []
+        for h in (190, 170):
+            pid = db.add_profile(conn, "manual", ["x.jpg"], extra={"descriptors": [f"Height: {h} cm"]})
+            (photo_id,) = [r["id"] for r in conn.execute("SELECT id FROM photos WHERE profile_id = ?", (pid,))]
+            db.set_embedding(conn, photo_id, np.ones(4, dtype=np.float32), "m")
+            db.add_rating(conn, pid, False)
+            pids.append(pid)
+        ids, _, _ = model.training_data(conn, "m")
+    ok = pids[1]
+    assert ids == [ok]

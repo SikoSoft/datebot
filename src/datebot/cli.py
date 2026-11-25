@@ -166,6 +166,9 @@ def filters_set(
     max_distance_km: Optional[float] = typer.Option(None),
     block: Optional[list[str]] = typer.Option(None, help="Reject profiles mentioning this word/phrase (repeatable)."),
     require: Optional[list[str]] = typer.Option(None, help="Reject unless one of these is mentioned (repeatable)."),
+    reject_height_from_cm: Optional[int] = typer.Option(None, help="Reject anyone this tall or taller."),
+    field_keyword: Optional[list[str]] = typer.Option(
+        None, help="Reject when a labelled field has a word, as FIELD=word (repeatable), e.g. politics=left."),
 ) -> None:
     """Update filters. Only the options you pass change; keyword lists are replaced when given."""
     f = hard_filters.load()
@@ -179,6 +182,16 @@ def filters_set(
         f.blocked_keywords = block
     if require:
         f.required_keywords = require
+    if reject_height_from_cm is not None:
+        f.reject_height_from_cm = reject_height_from_cm
+    if field_keyword:
+        f.field_keywords = {}
+        for item in field_keyword:
+            name, sep, word = item.partition("=")
+            if not sep or not name.strip() or not word.strip():
+                typer.secho(f"--field-keyword needs FIELD=word, got '{item}'", fg=typer.colors.RED)
+                raise typer.Exit(1)
+            f.field_keywords.setdefault(name.strip().lower(), []).append(word.strip())
     if f.min_age is not None and f.max_age is not None and f.min_age > f.max_age:
         typer.secho("min-age is greater than max-age", fg=typer.colors.RED)
         raise typer.Exit(1)
