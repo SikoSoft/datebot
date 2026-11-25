@@ -244,6 +244,32 @@ Needs the `phone` extra: `uv sync --extra phone`.
 `--import` to store it). A like **without** a comment and roses have not been seen in traffic yet, so they are ignored
 and reported as "unrecognised ratings" rather than guessed.
 
+## Behaviour model (how you swipe)
+
+A second model, trained alongside the taste model and independent of it, learns *how* you behave on a profile:
+how long you look before swiping, whether you hesitate, scroll or move the pointer, and your pacing over a session.
+Every swipe captured by `capture tinder|badoo|hinge` also stores an interaction (linked to the profile and rating when
+known; a profile never needs one, so older data stays valid).
+
+What is measured depends on where you swipe:
+
+| source | measured |
+|---|---|
+| Hinge (iPhone via proxy) | **Timing only**: dwell from the card appearing (previous swipe, or the profile's arrival) to your swipe request. A proxy cannot see touches or scrolls. |
+| Tinder / Badoo (desktop Chrome) | Dwell plus input events from a passive injected listener: pointer path, speed, acceleration and deceleration into the click, jitter, pauses, hesitation, wheel up/down and reversals, arrow-key holds, click position inside the button, window focus. **Only arrow-key names are recorded; other keystrokes never are.** The listener is ordinary page JavaScript (it exposes `__datebot_events`), so the page could see it. |
+
+Raw inputs are stored compressed next to the derived features, so new features can be recomputed for old sessions.
+Dwell is inferred from timestamps (it includes time spent on anything else between swipes); dwell over 5 minutes counts as a break.
+
+| command | what it does |
+|---|---|
+| `behavior train [--source hinge] [--edges 0,30,50,70,100] [--name N]` | Groups your swipes by preference score (out-of-fold, so a profile is not scored by a model that memorised your verdict) and prints dwell and input quantiles per band, like/pass dwell, hesitation and session rhythm. Needs 10 scored swipes. Apps differ, so train per `--source` as well as pooled. |
+| `behavior show` / `behavior reset` | Print or forget a trained behaviour model. Interactions are kept. |
+| `behavior clear-data [--yes]` | Erase all behaviour telemetry. Profiles, photos and ratings are kept. |
+
+The bot's own swipes are stored with origin `auto` and are never learned from. `behavior_model.sample_dwell_ms(model, score)`
+draws a dwell from your distribution for that score, but nothing calls it: nothing in datebot uses the behaviour model to act on your account.
+
 ## Auto-swipe (Tinder and Badoo web)
 
 **This acts on your account. Automating swipes breaks Tinder's terms and can get the account restricted or banned.** Use at your own risk, and start without `--live`.
@@ -304,3 +330,4 @@ With under about 50 ratings the report warns that results are rough.
 - [x] Capture from Hinge (iPhone via mitmproxy; auto-swipe on Hinge not built)
 - [x] Auto-swipe with a confidence band (Tinder web; the middle band is left to you in the app)
 - [x] Review queue UI (audit the bot's swipes, feed back verdicts)
+- [x] Behaviour model (dwell, input kinematics and rhythm per score band; collection + distributions, not wired to any action)
