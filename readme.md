@@ -66,6 +66,7 @@ Rules of thumb:
 ```bash
 uv sync --extra embed --extra ui --extra capture
 uv run datebot capture tinder         # swipe as usual; your swipes become ratings (stop with Ctrl+C / close Chrome)
+                                       # your first swipe each run is ignored (Tinder's free 'perfect 10'); --keep-first records it
 uv run datebot train
 uv run datebot eval                   # is it learning anything yet?
 ```
