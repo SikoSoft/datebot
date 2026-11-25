@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import re
 import sqlite3
+import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
@@ -104,6 +105,24 @@ def make_row(label: str, likes: int, n: int, baseline: float) -> Row:
     lo, hi = wilson(likes, n)
     se = math.sqrt(max(baseline * (1 - baseline), 1e-9) / n) if n else 1.0
     return Row(label, n, likes, likes / n if n else 0.0, lo, hi, (likes / n - baseline) / se if n else 0.0)
+
+
+def _fold(label: str) -> str:
+    """Spelling-insensitive key: 'Malmö', 'Malmo' and ' malmo ' are the same place."""
+    decomposed = unicodedata.normalize("NFKD", label)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold().strip()
+
+
+def merge_variants(groups: dict[str, list[bool]]) -> dict[str, list[bool]]:
+    """Merge values that differ only by accents/case/spacing, keeping the spelling with the most profiles."""
+    by_key: dict[str, list[str]] = defaultdict(list)
+    for label in groups:
+        by_key[_fold(label)].append(label)
+    merged: dict[str, list[bool]] = {}
+    for labels in by_key.values():
+        best = max(labels, key=lambda l: (len(groups[l]), l))
+        merged[best] = [x for l in labels for x in groups[l]]
+    return merged
 
 
 def _tally(groups: dict[str, list[bool]], baseline: float, order: list[str] | None = None) -> list[Row]:
@@ -211,6 +230,8 @@ def build(conn: sqlite3.Connection, source: str | None = None,
         for pid, v in values.items():
             if v is not None:
                 groups[v].append(liked[pid])
+        if order is None:  # fixed orders are our own labels, not free text
+            groups = merge_variants(groups)
         rows = _tally(groups, baseline, order)
         if limit:
             rows = rows[:limit]
@@ -227,6 +248,7 @@ def build(conn: sqlite3.Connection, source: str | None = None,
             covered += bool(ts)
             for t in ts:
                 groups[t].append(liked[pid])
+        groups = merge_variants(groups)
         rows = [make_row(k, sum(v), len(v), baseline) for k, v in groups.items() if len(v) >= min_n]
         rows.sort(key=lambda r: -r.n)
         if rows:

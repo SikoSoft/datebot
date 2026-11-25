@@ -69,3 +69,17 @@ def test_classify_categories_and_flags():
     out = attributes.classify(pids, np.array(emb), pe, groups)
     assert out[0]["hair_colour"] == "blonde" and out[1]["hair_colour"] == "black"
     assert out[2]["glasses"] == "yes" and out[0]["glasses"] == "no"
+
+
+def test_merge_variants_keeps_the_more_common_spelling():
+    merged = insights.merge_variants({"Malmö": [True] * 5, "Malmo": [False] * 2, " malmo": [True], "Lund": [True]})
+    assert set(merged) == {"Malmö", "Lund"} and len(merged["Malmö"]) == 8
+
+
+def test_city_card_merges_spellings(tmp_path):
+    conn = db.connect(str(tmp_path / "c.db"))
+    for i, city in enumerate(["Malmö"] * 5 + ["Malmo"] * 3 + ["Lund"] * 4):
+        pid = db.add_profile(conn, "tinder", f"c{i}", extra={"city": city})
+        db.add_rating(conn, pid, liked=i % 2 == 0)
+    city = next(c for c in insights.build(conn, visual=None)["cards"] if c["id"] == "city")
+    assert {r["label"]: r["n"] for r in city["rows"]} == {"Malmö": 8, "Lund": 4}
