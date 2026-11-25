@@ -30,7 +30,7 @@
   .jump { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
   .jump a { padding:3px 11px; border:1px solid var(--line); border-radius:99px; color:var(--fg); text-decoration:none; font-size:13px; background:var(--card); }
   h2.section { margin:26px 0 8px; font-size:17px; scroll-margin-top:70px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(370px, 1fr)); gap:12px; align-items:start; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(400px, 1fr)); gap:12px; align-items:start; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; scroll-margin-top:70px; }
   .card.flash { outline:2px solid var(--accent); }
   .card h3 { margin:0; font-size:14.5px; flex:1; }
@@ -39,14 +39,21 @@
   .x:hover { background:var(--bg); color:var(--fg); }
   .meta { color:var(--muted); font-size:12px; margin:2px 0 8px; }
   .badge { display:inline-block; font-size:11px; padding:0 7px; border:1px solid var(--line); border-radius:99px; margin-left:6px; }
-  .row { display:grid; grid-template-columns:minmax(70px, 34%) 1fr 86px; gap:8px; align-items:center; padding:3px 0; font-size:13px; }
+  .row { display:grid; grid-template-columns:minmax(60px, 27%) 1fr 84px; gap:8px; align-items:center; padding:3px 0; font-size:13px; }
   .row .lab { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .row.dim { opacity:.55; }
-  .track { position:relative; height:14px; background:var(--bg); border-radius:4px; }
-  .fill { position:absolute; left:0; top:0; bottom:0; border-radius:4px; background:var(--bar); }
+  .track { position:relative; height:18px; border-radius:4px; background:
+    linear-gradient(var(--line), var(--line)) 25% 0/1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) 50% 0/1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) 75% 0/1px 100% no-repeat, var(--bg); }
+  .fill { position:absolute; left:0; top:4px; bottom:4px; border-radius:3px; background:var(--bar); }
   .row.hi .fill { background:var(--like); } .row.lo .fill { background:var(--pass); }
-  .ci { position:absolute; top:50%; height:2px; background:var(--fg); opacity:.55; transform:translateY(-50%); }
-  .base { position:absolute; top:-2px; bottom:-2px; width:0; border-left:2px dashed var(--fg); opacity:.45; }
+  .ci { position:absolute; top:2px; bottom:2px; border-left:2px solid var(--fg); border-right:2px solid var(--fg); }
+  .ci::after { content:''; position:absolute; left:0; right:0; top:50%; height:2px; margin-top:-1px; background:var(--fg); }
+  .base { position:absolute; top:-3px; bottom:-3px; width:0; border-left:2px dashed var(--accent); }
+  .legend { display:grid; grid-template-columns:minmax(260px, 380px) 1fr; gap:6px 20px; align-items:center; }
+  .legend ol { margin:0; padding-left:18px; font-size:13px; } .legend li { margin:3px 0; }
+  .legend .row { grid-template-columns:70px 1fr 86px; }
   .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .num small { color:var(--muted); }
   .empty { padding:40px 16px; text-align:center; color:var(--muted); }
@@ -76,9 +83,20 @@
     <div class="hint">Rows whose like rate differs clearly from your average (95% interval excludes it), at least 8 profiles each. With this many stats a few will be flukes: trust big n, and patterns that repeat across related stats. The app you swiped in is a common confounder, so compare with one app selected.</div>
     <div class="hl" id="hl"></div>
   </div>
+  <div class="panel">
+    <h2>How to read a row</h2>
+    <div class="legend"><div id="legendRow"></div>
+    <ol>
+      <li><b>Bar</b> = the share of those profiles you liked. The bar's scale is always 0–100% (faint ticks at 25/50/75%), in every card.</li>
+      <li><b>Whisker (line with end caps)</b> = the range your true like rate for this group could plausibly be (95%), given how few profiles there are. A long whisker means "not enough data yet".</li>
+      <li><b>Blue dashed line</b> = your overall like rate across all rated profiles. It is at the same spot in every card.</li>
+      <li><b>Colour</b>: green/red only when the whole whisker is on one side of the dashed line (clearly different from your average). Grey = can't tell it apart from your average.</li>
+      <li><b>n</b> = how many rated profiles are in that row.</li>
+    </ol></div>
+  </div>
   <div class="jump" id="jump"></div>
   <div id="cards"></div>
-  <div class="hint" style="margin-top:20px">Each bar is your like rate for profiles with that value, the thin line is its 95% interval, the dashed line is your overall average. Green/red = clearly above/below it. "guess" cards come from the CLIP model labelling photos: noisy, so verify with <code>datebot explain --examples</code>.</div>
+  <div class="hint" style="margin-top:20px">See "How to read a row" above. "guess" cards come from the CLIP model labelling photos: noisy, so verify with <code>datebot explain --examples</code>.</div>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -128,8 +146,7 @@ function renderCard(c, base) {
   x.onclick = () => { hidden.add(c.id); saveHidden(); render(); };
   top.append(h, x);
   card.append(top, el('div', 'meta', `${c.covered} of ${c.total} rated profiles`));
-  const scale = Math.max(0.2, Math.min(1, Math.ceil(Math.max(...rows.map(r => r.hi)) * 10) / 10));
-  rows.forEach(r => card.append(renderRow(r, base, scale)));
+  rows.forEach(r => card.append(renderRow(r, base, 1)));
   if (c.note) card.append(el('div', 'note', c.note));
   return card;
 }
@@ -144,6 +161,10 @@ function render() {
     Object.keys(s.sources).sort().forEach(k => { const o = el('option', '', `${k} (${s.sources[k]})`); o.value = k; $('source').append(o); });
   }
 
+  const ex = { label: 'example', n: 40, likes: 20, rate: 0.5, lo: 0.35, hi: 0.65, z: 0 };
+  const lr = renderRow(ex, base, 1); lr.className = 'row'; lr.title = '';
+  lr.querySelector('.num').firstChild.textContent = '50% ';
+  $('legendRow').replaceChildren(lr);
   const t = $('tiles'); t.replaceChildren(tile(s.rated, 'rated profiles'), tile(s.likes, 'likes'), tile(s.passes, 'passes'), tile(pct(base), 'like rate'));
   if (s.visual_note) { const n = el('div', 'tile'); n.append(el('span', '', s.visual_note)); t.append(n); }
 
