@@ -210,6 +210,23 @@ uv run datebot capture badoo --dump DIR # also save raw API traffic (private: ho
 
 Same idea as Tinder: it only listens. Profiles from the encounters feed are stored, and your own swipes become labeled ratings. The wire format was verified against real traffic. Vote codes 2 = like and 3 = pass were confirmed against a real session (they match Bumble's [documented protocol](https://medium.com/independent-security-evaluators/reverse-engineering-bumbles-api-a2a0d39b3a87)). Badoo gives a city but no distance, so the distance filter does not apply. Auto-swipe also works on Badoo, see below.
 
+## Probing Hinge from your iPhone
+
+Hinge is mobile-only, so capture goes through a proxy on this Mac. This first step is a **read-only probe**: it only
+records traffic and answers "can we read Hinge's API at all?". Hinge's hostnames and formats are not mapped yet.
+
+1. `uv tool install mitmproxy`, then `mitmdump -s src/datebot/capture/hinge_probe.py` (listens on port 8080).
+2. iPhone, same Wi-Fi: Settings > Wi-Fi > (i) > Configure Proxy > Manual, server = this Mac's LAN IP, port 8080.
+3. Safari on the iPhone: open `mitm.it`, install the profile, then Settings > General > About > Certificate Trust
+   Settings > enable full trust for the mitmproxy certificate.
+4. Open Hinge and browse ~15 profiles. Swipe as you normally would; nothing is sent by datebot.
+5. Stop mitmdump, run `datebot capture hinge-probe`. Hosts under "Readable" carry data we can parse. Hosts under
+   "refused the proxy certificate" are certificate-pinned: then we fall back to iPhone Mirroring plus screen parsing
+   (we will not bypass pinning).
+6. Turn the iPhone proxy back off and remove the mitmproxy profile when done: it can read all your phone's traffic.
+
+Dumps live in `data/hinge-probe/` (gitignored): other people's profile data, keep local.
+
 ## Auto-swipe (Tinder and Badoo web)
 
 **This acts on your account. Automating swipes breaks Tinder's terms and can get the account restricted or banned.** Use at your own risk, and start without `--live`.
