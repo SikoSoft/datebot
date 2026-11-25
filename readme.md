@@ -15,22 +15,125 @@ Everything runs locally. Photos, ratings and models live in `data/` (gitignored)
 5. Once a model exists, the UI shows you the profiles it is *least sure about* first (active learning),
    which is the fastest way to teach it.
 
-## Quick start
+## The two steps people mix up: `embed` and `train`
+
+Think of datebot as having **two separate jobs** that happen to be chained:
+
+| | `datebot embed` | `datebot train` |
+|---|---|---|
+| **What it does** | *Reads* each photo (and bio) once and converts it into 512 numbers that describe what it looks like. | *Learns your taste*: fits the model to your likes/passes, using those numbers. |
+| **Input** | New profiles that have no numbers yet. | Your ratings + the numbers from `embed`. |
+| **Depends on your ratings?** | No. It never looks at them. | Yes, entirely. |
+| **Speed** | The slower one (runs CLIP on your machine; seconds for a few profiles, minutes for hundreds). | Fast (seconds). |
+| **Result is permanent?** | Yes. Each photo is embedded once and kept forever (unless you change the CLIP model). | No. It is a snapshot of your ratings *at that moment*. |
+| **Run it when** | **New profiles arrived**: after `import`, after `capture`. | **Your ratings changed**: after you rated more, or after `embed` added profiles you had already rated. |
+
+Rules of thumb:
+
+- **Always `embed` before `train`**, so the newest profiles are included: `datebot embed && datebot train`.
+  Training only uses profiles that have been embedded; anything not embedded is silently ignored.
+- **Rating a profile does not require either command.** You can rate for an hour; nothing changes until you `train`.
+- **Scores do not update by themselves.** The model scores with whatever it learned at the last `train`. The more you have rated
+  since, the more out of date it is. Re-train every ~20-30 new ratings, or whenever you want fresh scores.
+- **`embed` is harmless to repeat.** If nothing is new it does nothing ("Embedded 0 photo(s)"), so when in doubt, run it.
+- **Changing filters needs neither.** Filters apply instantly.
+- **`eval`, `explain` and `score` do not embed or train anything.** They only use what has already been embedded and trained.
+  If they seem to use fewer ratings than `datebot stats` shows, you have un-embedded profiles: run `datebot embed`.
+
+What does it for you automatically:
+
+| action | embeds new profiles? | retrains? |
+|---|---|---|
+| `datebot import` | no | no |
+| `datebot capture tinder/badoo` | no | no |
+| **"Train model" button in the UI** | **yes** | **yes** |
+| `datebot autoswipe` | yes, for each profile it sees | no (uses the saved model) |
+| rating in the UI / `datebot ui` upload | no | no |
+
+So if you only ever use the UI: rate, then click **Train model**; that button does both steps. If you capture from an app or
+import folders, run `datebot embed && datebot train` yourself afterwards (or click Train model in the UI).
+
+## Typical workflows
+
+**First time, or after capturing a batch of profiles**
 
 ```bash
-uv sync --extra embed --extra ui
-uv run datebot ui            # http://127.0.0.1:8000: drop in profile photos, rate with ←/→, click "Train model"
+uv sync --extra embed --extra ui --extra capture
+uv run datebot capture tinder         # swipe as usual; your swipes become ratings (stop with Ctrl+C / close Chrome)
+uv run datebot embed && uv run datebot train
+uv run datebot eval                   # is it learning anything yet?
 ```
 
-CLI equivalents:
+**Rating in the browser**
 
 ```bash
-uv run datebot import ./profiles     # each subfolder = one profile
-uv run datebot embed
-uv run datebot train
-uv run datebot score --uncertain
-uv run datebot stats
+uv run datebot ui                     # http://127.0.0.1:8000 : rate with the arrow keys, click "Train model" now and then
 ```
+
+**Adding profiles from a folder of photos** (each subfolder = one profile)
+
+```bash
+uv run datebot import ./profiles
+uv run datebot embed && uv run datebot train
+```
+
+**"What does it think of profiles I haven't rated?"**
+
+```bash
+uv run datebot score --limit 20       # highest scored first
+uv run datebot score --uncertain      # the ones it is least sure about: the most useful to rate next
+```
+
+**Starting over**
+
+```bash
+uv run datebot reset-model            # forget what it learned; ratings and embeddings stay, `train` again any time
+uv run datebot reset-ratings          # erase your ratings and teach from scratch
+```
+
+## Every command
+
+Run `uv run datebot --help` (or `datebot <command> --help`) for the options. "Needs" is what must have happened first.
+
+### Getting profiles in
+
+| command | what it does | when to run it |
+|---|---|---|
+| `import PATH [--source manual]` | Copies photos from a folder into the database. Each subfolder is one profile; loose images are one profile each. Does **not** embed. | When you have screenshots/photos to rate by hand. Then run `embed`. |
+| `capture tinder` / `capture badoo` | Opens Chrome; you log in and swipe as usual and datebot records every profile shown plus your own swipes (as ratings). Passive: never swipes for you. Does **not** embed. | Whenever you swipe, to collect data for free. Then run `embed`. |
+| `ui` | Starts the local web app: add profiles, rate them, set filters, train/evaluate/reset with buttons. | Your main way to rate. |
+
+### Teaching the model
+
+| command | what it does | needs | when to run it |
+|---|---|---|---|
+| `embed` | Converts every not-yet-embedded photo and bio into numbers (CLIP, local). | profiles imported or captured | After new profiles arrive; before `train`. Safe to repeat. |
+| `train [--name NAME]` | Fits the model to your likes/passes and saves it (default name `default`; other names keep side-by-side snapshots). Needs at least 3 likes and 3 passes. | embedded + rated profiles | After rating more, or after `embed` added rated profiles. |
+| `score [--limit N] [--uncertain]` | Prints scores 0-100 for profiles you have not rated yet (those passing your filters). | a trained model | To see what it thinks, or to find the best profiles to rate next. |
+| `models` | Lists saved models and how many ratings each was trained on. | | To check a snapshot is current. |
+
+### Checking it
+
+| command | what it does | when to run it |
+|---|---|---|
+| `stats` | Counts: profiles, your likes/passes, bot swipes, unrated. | Quick sanity check. |
+| `eval` | Honest accuracy test on profiles the model was not trained on, plus the auto-swipe score cut-offs. | After training, to learn whether it is worth trusting; re-run as you rate more. |
+| `explain [--examples N] [--prompt "..."]` | Which visual attributes (glasses, gym photos, hair, ...) separate your likes from your passes. | After you have a few dozen likes. |
+
+### Controlling it
+
+| command | what it does |
+|---|---|
+| `filters show / set / clear` | Hard deal-breakers (age, distance, keywords) applied before the model. Take effect instantly. |
+| `reset-model [--name NAME]` | Deletes the trained model only. |
+| `reset-ratings [--yes]` | Deletes your ratings only (bot swipes are kept). Photos and embeddings are untouched. |
+
+### Acting on your account (read the warnings below first)
+
+| command | what it does |
+|---|---|
+| `autoswipe tinder` / `autoswipe badoo` | Watches the site and, **only with `--live`**, swipes when the model is confident. Without `--live` it just says what it would do. |
+| `version` | Prints the version. |
 
 ## Why does it like what it likes?
 
