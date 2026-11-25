@@ -265,6 +265,55 @@ def capture_badoo(
                + (f", {c.failed} skipped (photos failed)" if c.failed else "") + ".")
 
 
+@capture_app.command("hinge")
+def capture_hinge(port: int = typer.Option(8080, help="Port for the proxy your iPhone points at.")) -> None:
+    """Record Hinge profiles and your own swipes from your iPhone (needs the `phone` extra).
+
+    Starts a mitmproxy on this Mac; set it up on the phone as in the readme ("Capturing from Hinge"). You use the
+    app yourself; datebot only listens. Your likes and passes become labeled ratings. Ctrl+C to stop.
+    """
+    import subprocess
+    import sys
+
+    addon = Path(__file__).parent / "capture" / "hinge_addon.py"
+    mitmdump = Path(sys.executable).parent / "mitmdump"
+    if not mitmdump.exists():
+        raise typer.BadParameter("mitmproxy is not installed: run `uv sync --extra phone`.")
+    try:
+        subprocess.run([str(mitmdump), "-s", str(addon), "--listen-port", str(port),
+                        "--set", "flow_detail=0", "--set", "termlog_verbosity=warn"], check=False)
+    except KeyboardInterrupt:
+        pass
+
+
+@capture_app.command("hinge-replay")
+def capture_hinge_replay(
+    dump: Path = typer.Argument(..., help="A hinge-probe dump folder, e.g. data/hinge-probe."),
+    import_: bool = typer.Option(False, "--import", help="Store the profiles and swipes (default: only count them)."),
+) -> None:
+    """Run a probe dump through the Hinge parser, to check it or to import what was already captured."""
+    from datebot.capture import hinge
+    from datebot.capture.recorder import Recorder
+
+    session = hinge.HingeSession()
+    events = list(hinge.replay(dump, session))
+    profiles = [e.profile for e in events if e.kind == "profile"]
+    swipes = [e.swipe for e in events if e.kind == "swipe"]
+    typer.echo(f"{len({p.external_id for p in profiles})} profile(s), {len(swipes)} swipe(s) "
+               f"({sum(s.liked for s in swipes)} likes, {sum(not s.liked for s in swipes)} passes)"
+               + (f"; unrecognised ratings {dict(session.unknown_ratings)}" if session.unknown_ratings else ""))
+    if not import_:
+        typer.echo("Dry run. Add --import to store them.")
+        return
+    rec = Recorder(source="hinge")
+    for e in events:  # in capture order, so a swipe always follows its profile
+        rec.record_profiles([e.profile]) if e.kind == "profile" else rec.record_swipe(e.swipe)
+    c = rec.counts
+    typer.echo(f"Imported {c.new} new profile(s) and {c.swipes} swipe(s)"
+               + (f"; {c.unknown_swipes} on uncaptured profiles" if c.unknown_swipes else "")
+               + (f"; {c.failed} skipped (photos failed)" if c.failed else "") + ".")
+
+
 @capture_app.command("hinge-probe")
 def capture_hinge_probe() -> None:
     """Summarize what the Hinge mitmproxy probe captured (hosts that are readable vs. certificate-pinned).
