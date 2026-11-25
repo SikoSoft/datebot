@@ -85,3 +85,12 @@ def test_bot_swipes_are_recorded_with_auto_origin(env):
     conn = db.connect(path)
     assert db.latest_ratings(conn) == {}
     assert db.auto_swiped_ids(conn) == {db.find_profile_id(conn, "tinder", "a"): True}
+
+
+def test_first_app_swipe_can_be_skipped_once_and_bot_swipes_do_not_use_it_up(env):
+    rec, _, _ = env
+    rec._skip_pending = True
+    assert rec.take_skip("auto") is False
+    assert rec.take_skip("app") is True
+    assert rec.take_skip("app") is False
+    assert rec.counts.ignored == 1

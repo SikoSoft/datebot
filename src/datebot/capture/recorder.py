@@ -28,13 +28,16 @@ class Counts:
     failed: int = 0          # profiles skipped because no photo could be downloaded
     swipes: int = 0          # your swipes recorded as ratings
     unknown_swipes: int = 0  # swipes on profiles we never captured
+    ignored: int = 0         # your swipes deliberately not recorded (the session's first-profile freebie)
 
 
 class Recorder:
     """Stores captured profiles and turns your own swipes into labeled ratings (origin='app')."""
 
-    def __init__(self, fetch: Fetcher = http_fetch, source: str = SOURCE, db_path: str | None = None):
+    def __init__(self, fetch: Fetcher = http_fetch, source: str = SOURCE, db_path: str | None = None,
+                 skip_first_swipe: bool = False):
         self.fetch = fetch
+        self._skip_pending = skip_first_swipe
         self.source = source
         self.db_path = db_path
         self.counts = Counts()
@@ -73,6 +76,17 @@ class Recorder:
                 new += 1
                 self.counts.new += 1
         return new
+
+    def take_skip(self, origin: str = "app") -> bool:
+        """True once, for your first swipe of the session, if skip_first_swipe was requested.
+
+        Tinder opens every session with a near-universal 'like' that free accounts feel obliged to spend a
+        like on; that swipe says nothing about your taste, so it is not recorded as a rating."""
+        if origin != "app" or not self._skip_pending:
+            return False
+        self._skip_pending = False
+        self.counts.ignored += 1
+        return True
 
     def record_swipe(self, swipe: Swipe, origin: str = "app") -> bool:
         """Record a swipe as a rating (origin 'app' = yours, 'auto' = the bot's).

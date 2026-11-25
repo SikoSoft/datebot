@@ -205,15 +205,20 @@ def capture_tinder(
         None, help="Attach to your own Chrome instead, e.g. http://localhost:9222 "
                    "(start it with --remote-debugging-port=9222 and a separate --user-data-dir)."),
     dump: Optional[Path] = typer.Option(None, help="Save raw Tinder responses here to debug parsing."),
+    keep_first: bool = typer.Option(
+        False, "--keep-first",
+        help="Also record your first swipe of the session (by default it is ignored: Tinder opens with a "
+             "near-universal 'like' that says nothing about your taste)."),
 ) -> None:
     """Record Tinder profiles and your own swipes while you use tinder.com (needs the `capture` extra).
 
-    You log in and swipe yourself; datebot only listens. Your swipes become labeled ratings.
+    You log in and swipe yourself; datebot only listens. Your swipes become labeled ratings, except the
+    first swipe of each run, which is ignored unless you pass --keep-first.
     """
     from datebot.capture import browser
     from datebot.capture.recorder import Recorder
 
-    rec = Recorder()
+    rec = Recorder(skip_first_swipe=not keep_first)
     try:
         browser.run(rec, cdp=cdp, dump_dir=dump, log=lambda m: typer.echo(f"[capture] {m}"))
     except KeyboardInterrupt:

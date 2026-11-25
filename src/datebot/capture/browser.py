@@ -70,6 +70,12 @@ def attach(
         elif (swipe := tinder.parse_swipe(url)) is not None:
             _dump(dump_dir, "like" if swipe.liked else "pass", url, resp.status, resp.text())
             origin = observer.swipe_origin(swipe) if observer else "app"
+            if recorder.take_skip(origin):
+                log(f"swipe ({'liked' if swipe.liked else 'passed'} {swipe.user_id}): first of the session, "
+                    "not recorded (use --keep-first to record it)")
+                if observer:
+                    observer.on_swipe(swipe, False, origin)
+                return
             recorded = recorder.record_swipe(swipe, origin=origin)
             who = "bot" if origin == "auto" else "you"
             if recorded:
