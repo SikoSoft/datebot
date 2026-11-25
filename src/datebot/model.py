@@ -10,7 +10,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
-from datebot import config, db
+from datebot import config, db, filters as hard_filters
 
 MIN_PER_CLASS = 3  # need at least this many likes and passes to train
 FEATURE_VERSION = 3  # bump when featurize() changes; older saved models are ignored and must be retrained
@@ -53,9 +53,15 @@ def _path(name: str) -> Path:
 
 
 def training_data(conn: sqlite3.Connection, embed_model: str) -> tuple[list[int], np.ndarray, np.ndarray]:
-    """(profile ids, features, labels) for every rated profile that has embeddings, oldest rating first."""
+    """(profile ids, features, labels) for every rated profile that has embeddings, oldest rating first.
+
+    Profiles that trip a hard deal-breaker are left out (not deleted): a pass caused by a rule says
+    nothing about how attractive they are, so it must not teach the model your type."""
     ids, X, y = [], [], []
+    f = hard_filters.load()
     for pid, liked in db.latest_ratings(conn).items():
+        if not f.is_empty() and hard_filters.check(db.get_profile(conn, pid), f) is not None:
+            continue
         emb = db.profile_embeddings(conn, pid, embed_model)
         if emb.size == 0:
             continue
