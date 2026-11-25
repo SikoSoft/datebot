@@ -265,6 +265,17 @@ def capture_badoo(
                + (f", {c.failed} skipped (photos failed)" if c.failed else "") + ".")
 
 
+@capture_app.command("hinge-probe")
+def capture_hinge_probe() -> None:
+    """Summarize what the Hinge mitmproxy probe captured (hosts that are readable vs. certificate-pinned).
+
+    Capture itself runs via mitmdump; see the readme section "Probing Hinge from your iPhone".
+    """
+    from datebot.capture import hinge_probe
+
+    typer.echo(hinge_probe.summarize())
+
+
 autoswipe_app = typer.Typer(help="Let the model swipe when it is confident (acts on your account!).", no_args_is_help=True)
 app.add_typer(autoswipe_app, name="autoswipe")
 
