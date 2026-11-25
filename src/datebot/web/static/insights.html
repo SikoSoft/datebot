@@ -87,10 +87,10 @@
     <h2>How to read a row</h2>
     <div class="legend"><div id="legendRow"></div>
     <ol>
-      <li><b>Bar</b> = the share of those profiles you liked. The bar's scale is always 0–100% (faint ticks at 25/50/75%), in every card.</li>
-      <li><b>Whisker (line with end caps)</b> = the range your true like rate for this group could plausibly be (95%), given how few profiles there are. A long whisker means "not enough data yet".</li>
+      <li><b>Percentage and bar</b> = of the rated profiles with that value, the share you liked (e.g. 44% with n=116: you liked 44% of 116 profiles). The bar's end is that same number. The bar's scale is always 0–100% (faint ticks at 25/50/75%), in every card.</li>
+      <li><b>Whisker (line with end caps)</b> = the uncertainty around the bar's end: the range your true like rate for this group could plausibly be (95%). The bar end is always inside it. More data makes the whisker shorter around the same spot; it does not push the bar past it. A long whisker means "not enough data yet".</li>
       <li><b>Blue dashed line</b> = your overall like rate across all rated profiles. It is at the same spot in every card.</li>
-      <li><b>Colour</b>: green/red only when the whole whisker is on one side of the dashed line (clearly different from your average). Grey = can't tell it apart from your average.</li>
+      <li><b>Colour</b>: green/red only when the whole whisker is on one side of the dashed line (clearly different from your average). Grey = can't tell it apart from your average, so a red-ish bar whose whisker crosses the line stays grey.</li>
       <li><b>n</b> = how many rated profiles are in that row.</li>
     </ol></div>
   </div>
@@ -127,8 +127,7 @@ function renderRow(r, base, scale) {
   const ci = el('div', 'ci'); ci.style.left = (r.lo / scale * 100) + '%'; ci.style.width = ((r.hi - r.lo) / scale * 100) + '%';
   const b = el('div', 'base'); b.style.left = (base / scale * 100) + '%';
   track.append(fill, ci, b);
-  const arrow = cls === 'hi' ? '▲ ' : cls === 'lo' ? '▼ ' : '';
-  const num = el('div', 'num', arrow + pct(r.rate) + ' '); num.append(el('small', '', 'n=' + r.n));
+  const num = el('div', 'num', pct(r.rate) + ' '); num.append(el('small', '', 'n=' + r.n));
   row.title = `${r.label}: ${r.likes} liked of ${r.n} (${pct(r.lo)}–${pct(r.hi)}), average is ${pct(base)}`;
   row.append(lab, track, num);
   return row;
@@ -174,7 +173,7 @@ function render() {
     const a = el('a'); a.href = '#' + h.card;
     a.onclick = e => { e.preventDefault(); const c = $(h.card); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1500); } };
     a.append(el('span', '', `${h.title}: ${h.label}${h.visual ? ' (guess)' : ''}`));
-    a.append(el('span', h.rate > base ? 'up' : 'down', `${h.rate > base ? '▲' : '▼'} ${pct(h.rate)} · n=${h.n}`));
+    a.append(el('span', h.rate > base ? 'up' : 'down', `${pct(h.rate)} vs ${pct(base)} avg · n=${h.n}`));
     hl.append(a);
   });
   $('hlPanel').style.display = hl.children.length ? '' : 'none';
