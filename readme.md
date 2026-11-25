@@ -10,7 +10,7 @@ Everything runs locally. Photos, ratings and models live in `data/` (gitignored)
 1. Profiles (photos + optional name/age/bio) go into a local SQLite database.
 2. Each photo, and each bio/prompt text, is embedded with CLIP (ViT-B-32) on your machine.
 3. A logistic-regression model over those embeddings learns your likes/passes and scores profiles 0-100.
-   Photos of a profile are summarized by their mean and max; the bio is an extra block (zeros if there is none).
+   Photos of a profile are summarized by their mean, max and first (lead) photo; the bio and each prompt are embedded separately and pooled into an extra block (zeros if there is no text).
 4. Hard filters (below) remove deal-breakers before the model ever sees a profile.
 5. Once a model exists, the UI shows you the profiles it is *least sure about* first (active learning),
    which is the fastest way to teach it.

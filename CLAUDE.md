@@ -51,4 +51,5 @@ Done: rating UI, local model, resettable training, hard filters, text features, 
 
 - Ask the user (AskUserQuestion) before decisions that act on their account or have no documented answer; they want this.
 - Automating swipes violates app ToS and risks account bans: keep warnings in the readme, default to observe-only, never add stealth/detection-evasion.
+- **Changing features must stay retroactive, and never drop swiped profiles.** Features are derived from stored data (`photos.position`, `profiles.extra`, ratings), so after changing `featurize` bump `FEATURE_VERSION` and re-train; old ratings are reused as-is. If a new feature needs data that old profiles never captured, do NOT delete or skip those profiles: give them zeros plus an indicator flag (like `has_text`) so they still train the model on everything else, and exclude them only from comparisons that need the new data (e.g. the `eval` ablation). Text vectors carry `db.TEXT_LAYOUT` in `text_embed_model`; bump it to re-embed from stored text.
 - Don't invent API field names: verify from real traffic, mark unverified parsers clearly.

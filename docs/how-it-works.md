@@ -75,8 +75,13 @@ For each profile (`model.featurize`):
 |---|---|---|
 | mean of photo embeddings | 512 | overall look across photos |
 | max of photo embeddings (per dimension) | 512 | a standout photo is not averaged away |
-| bio/prompt text embedding | 512 | zeros if the profile has no text |
+| lead (first) photo embedding | 512 | the photo you see first gets its own block, so the model can learn how much it matters versus the rest |
+| text embedding, mean over lines | 512 | overall tone of the bio + prompts + interests; zeros if the profile has no text |
+| text embedding, max over lines | 512 | one standout prompt is not averaged away |
 | has_text flag | 1 | so "no bio" is distinguishable from "bio about nothing" |
+
+Bio, each prompt answer, each interest and each descriptor are embedded **separately** and then pooled, because CLIP
+truncates any single text at 77 tokens (a prompt-heavy Hinge profile would otherwise lose most of its prompts).
 
 A `LogisticRegression` (regularised, `class_weight="balanced"`, since you pass on most profiles) is fitted to your
 likes/passes. The score is `P(like) × 100`. Only your own ratings (`manual` and `app` origin) are labels: the bot's
@@ -102,7 +107,9 @@ In `datebot.db`:
 
 - `photos.embedding`: a `BLOB` holding the raw bytes of 512 little-endian `float32` values = **2048 bytes per photo**.
   Next to it, `photos.embed_model` records which model made it (the `EMBED_ID` above).
-- `profiles.text_embedding` and `profiles.text_embed_model`: the same for the bio/prompt text, one per profile.
+- `profiles.text_embedding` and `profiles.text_embed_model`: the bio/prompt text, one per profile, stored as the
+  pooled `[mean, max]` of its per-line embeddings (1024 floats). `text_embed_model` also carries the layout version
+  (`db.TEXT_LAYOUT`), so a layout change re-embeds from the stored text automatically.
 
 They are saved the moment they are computed, by `datebot embed` or automatically by `train`, `score`, `eval`, `explain` and auto-swipe. Capture and import only store profiles; they do not embed. They are
 plain columns, so any tool that reads SQLite can get at them. At 2 KB each, even thousands of profiles are a few
