@@ -32,6 +32,17 @@ uv run datebot score --uncertain
 uv run datebot stats
 ```
 
+## Why does it like what it likes?
+
+```bash
+uv run datebot explain --examples 3
+```
+
+Ranks attributes (glasses, gym photos, hair colour, swimwear, and so on) by how well they separate your likes from your
+passes, with no tagging needed: CLIP is asked about each one after the fact. Add your own with `--prompt`.
+Needs a few dozen likes before it means much. How embeddings work, where they are stored, and how to analyse
+them yourself: [docs/how-it-works.md](docs/how-it-works.md).
+
 ## Hard filters
 
 Deal-breakers you already know don't need to be learned. Set them in the UI ("Deal-breakers" panel) or:
