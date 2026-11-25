@@ -70,6 +70,7 @@
     <label>App <select id="source"><option value="">all</option></select></label>
     <label>Order <select id="order"><option value="default">default</option><option value="signal">strongest signal first</option></select></label>
     <label>Min profiles/row <input type="range" id="minn" min="1" max="30" value="5"> <span id="minnv">5</span></label>
+    <label title="Profiles that look like scam/fake accounts at or above this score are left out of all stats">Hide likely fakes ≥ <input type="range" id="fake" min="20" max="101" value="60"> <span id="fakev">60</span></label>
     <input type="search" id="q" placeholder="Find a stat…">
     <button class="sm" id="hiddenBtn">Hidden (0)</button>
   </div>
@@ -94,6 +95,7 @@
       <li><b>n</b> = how many rated profiles are in that row.</li>
     </ol></div>
   </div>
+  <div class="panel" id="fakePanel" style="display:none"></div>
   <div class="jump" id="jump"></div>
   <div id="cards"></div>
   <div class="hint" style="margin-top:20px">See "How to read a row" above. "guess" cards come from the CLIP model labelling photos: noisy, so verify with <code>datebot explain --examples</code>.</div>
@@ -109,7 +111,9 @@ const saveHidden = () => { localStorage.setItem(KEY, JSON.stringify([...hidden])
 
 async function load() {
   const src = $('source').value;
-  const r = await fetch('/api/insights' + (src ? '?source=' + encodeURIComponent(src) : ''));
+  const ft = +$('fake').value;
+  const qs = [src ? 'source=' + encodeURIComponent(src) : '', ft <= 100 ? 'fake_threshold=' + ft : ''].filter(Boolean).join('&');
+  const r = await fetch('/api/insights' + (qs ? '?' + qs : ''));
   data = await r.json();
   render();
 }
@@ -165,7 +169,18 @@ function render() {
   lr.querySelector('.num').firstChild.textContent = '50% ';
   $('legendRow').replaceChildren(lr);
   const t = $('tiles'); t.replaceChildren(tile(s.rated, 'rated profiles'), tile(s.likes, 'likes'), tile(s.passes, 'passes'), tile(pct(base), 'like rate'));
+  if (s.fake.threshold !== null) t.append(tile(s.fake.excluded, `likely fakes left out (${s.fake.excluded_likes} liked)`));
   if (s.visual_note) { const n = el('div', 'tile'); n.append(el('span', '', s.visual_note)); t.append(n); }
+
+  $('fakev').textContent = +$('fake').value > 100 ? 'off' : $('fake').value;
+  const fp = $('fakePanel'); fp.replaceChildren();
+  if (s.fake.excluded) {
+    fp.style.display = '';
+    const d = el('details'); d.append(el('summary', '', `Left out as likely fake: ${s.fake.excluded} (score ≥ ${s.fake.threshold})`));
+    d.append(el('div', 'hint', 'Check these to tune the slider. If real people show up here, raise it. Nothing is deleted or hidden from rating.'));
+    s.fake.examples.forEach(e => d.append(el('div', 'note', `${e.name || '?'} (${e.source}, ${e.liked ? 'liked' : 'passed'}) score ${e.score}: ${e.reasons.join('; ')}`)));
+    fp.append(d);
+  } else fp.style.display = 'none';
 
   const byId = Object.fromEntries(data.cards.map(c => [c.id, c]));
   const hl = $('hl'); hl.replaceChildren();
@@ -216,6 +231,9 @@ function render() {
 $('hiddenBtn').onclick = () => { const rp = $('restorePanel'); rp.dataset.open = rp.dataset.open === '1' ? '0' : '1'; render(); };
 ['order', 'minn', 'q'].forEach(id => $(id).addEventListener('input', () => data && render()));
 $('source').addEventListener('change', load);
+$('fake').value = localStorage.getItem('datebot.insights.fake') || '60';
+$('fake').addEventListener('change', () => { localStorage.setItem('datebot.insights.fake', $('fake').value); load(); });
+$('fake').addEventListener('input', () => { $('fakev').textContent = +$('fake').value > 100 ? 'off' : $('fake').value; });
 load();
 </script>
 </body>

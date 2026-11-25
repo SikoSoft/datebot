@@ -83,3 +83,28 @@ def test_city_card_merges_spellings(tmp_path):
         db.add_rating(conn, pid, liked=i % 2 == 0)
     city = next(c for c in insights.build(conn, visual=None)["cards"] if c["id"] == "city")
     assert {r["label"]: r["n"] for r in city["rows"]} == {"Malmö": 8, "Lund": 4}
+
+
+def test_fake_score_signals():
+    from datebot import fake
+    scam = db.Profile(id=1, source="tinder", external_id="a", name="A", age=27, bio="Crypto trader, text me on telegram",
+                      extra={})
+    real = db.Profile(id=2, source="tinder", external_id="b", name="B", age=27,
+                      bio="I love hiking with my dog and baking sourdough on rainy Sundays", extra={})
+    s = fake.score(scam, photo_count=1)
+    assert s.score >= 55 and any("crypto" in r or "telegram" in r for r in s.reasons)
+    assert fake.score(real, photo_count=5).score == 0
+    assert fake.score(real, 5, {"professional": "yes", "filtered": "yes"}).score == 25
+
+
+def test_fake_threshold_excludes_from_stats(tmp_path):
+    conn = make_db(tmp_path)
+    scam = db.add_profile(conn, "tinder", "scam", name="S", age=30, bio=None, extra={})
+    db.add_rating(conn, scam, liked=True)
+    base = insights.build(conn, visual=None)
+    assert base["summary"]["rated"] == 41 and base["summary"]["fake"]["threshold"] is None
+    r = insights.build(conn, visual=None, fake_threshold=25)
+    f = r["summary"]["fake"]
+    assert r["summary"]["rated"] == 40 - (f["excluded"] - 1)
+    assert any(e["id"] == scam and e["liked"] for e in f["examples"])
+    assert insights.build(conn, visual=None, fake_threshold=100)["summary"]["rated"] == 41

@@ -102,10 +102,12 @@ def create_app() -> FastAPI:
         return FileResponse(STATIC / "review.html")
 
     @app.get("/api/insights")
-    def get_insights(source: str | None = None):
-        """Like-rate statistics per attribute (profile data and CLIP visual guesses); see insights.py."""
+    def get_insights(source: str | None = None, fake_threshold: int | None = None):
+        """Like-rate statistics per attribute (profile data and CLIP visual guesses); see insights.py.
+
+        Profiles with a fake-score (fake.py) >= fake_threshold are excluded; omit it to keep everyone."""
         with db.session() as conn:
-            return insights.build(conn, source or None)
+            return insights.build(conn, source or None, fake_threshold=fake_threshold)
 
     @app.get("/insights")
     def insights_page():

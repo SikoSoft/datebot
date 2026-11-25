@@ -5,6 +5,7 @@ rated profiles had that value and what share of them you liked. The baseline is 
 is interesting when it sits clearly above or below it. Cards come from stored profile data (age, height, distance,
 descriptors, interests, prompts, text) and from the visual labels in `attributes.py`.
 
+Profiles scoring above the chosen fake-profile threshold (`fake.py`) are left out of every stat.
 Only your own decisions count (`db.latest_ratings`: manual + app, never the bot's swipes). Nothing is hidden by
 the hard filters: you want to see the whole picture, including what you filtered out.
 """
@@ -18,7 +19,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
-from datebot import attributes, db, filters
+from datebot import attributes, db, fake, filters
 
 MIN_HIGHLIGHT_N = 8
 HIGHLIGHTS = 12
@@ -205,8 +206,17 @@ def visual_labels(conn: sqlite3.Connection) -> dict[int, dict[str, str | None]]:
 
 
 def build(conn: sqlite3.Connection, source: str | None = None,
-          visual: Callable[[sqlite3.Connection], dict] | None = visual_labels) -> dict:
+          visual: Callable[[sqlite3.Connection], dict] | None = visual_labels,
+          fake_threshold: int | None = None) -> dict:
+    """All cards. Profiles whose `fake.score` is >= `fake_threshold` are left out of every statistic (None = keep all)."""
     rated = _rated_rows(conn)
+    labels: dict = {}
+    visual_note = ""
+    if visual is not None and rated:
+        try:
+            labels = visual(conn)
+        except ImportError:
+            visual_note = "Visual stats need the embed extra: uv sync --extra embed"
     profiles: dict[int, db.Profile] = {}
     liked: dict[int, bool] = {}
     when: dict[int, str] = {}
@@ -217,10 +227,19 @@ def build(conn: sqlite3.Connection, source: str | None = None,
         profiles[p.id] = p
         liked[p.id] = bool(r["liked"])
         when[p.id] = r["created_at"]
+    photo_counts = {r["profile_id"]: r["c"] for r in conn.execute("SELECT profile_id, COUNT(*) c FROM photos GROUP BY profile_id")}
+    excluded = []
+    if fake_threshold is not None:
+        for pid in list(profiles):
+            fs = fake.score(profiles[pid], photo_counts.get(pid, 0), labels.get(pid))
+            if fs.score >= fake_threshold:
+                excluded.append({"id": pid, "name": profiles[pid].name, "source": profiles[pid].source,
+                                 "score": fs.score, "liked": liked[pid], "reasons": fs.reasons})
+                del profiles[pid], liked[pid], when[pid]
+    excluded.sort(key=lambda e: -e["score"])
     n = len(profiles)
     likes = sum(liked.values())
     baseline = likes / n if n else 0.0
-    photo_counts = {r["profile_id"]: r["c"] for r in conn.execute("SELECT profile_id, COUNT(*) c FROM photos GROUP BY profile_id")}
 
     cards: list[Card] = []
 
@@ -311,13 +330,8 @@ def build(conn: sqlite3.Connection, source: str | None = None,
             add(f"desc-{re.sub(r'[^a-z0-9]+', '-', key.lower())}", key, "Lifestyle", vals)
 
     # Visual labels
-    visual_note = ""
     covered_visual = 0
     if visual is not None and n:
-        try:
-            labels = visual(conn)
-        except ImportError:
-            labels, visual_note = {}, "Visual stats need the embed extra: uv sync --extra embed"
         covered_visual = sum(1 for i in ids if i in labels)
         if labels and covered_visual < n:
             visual_note = f"{n - covered_visual} rated profiles have no embedded photos yet (run: datebot embed)."
@@ -333,7 +347,9 @@ def build(conn: sqlite3.Connection, source: str | None = None,
     return {
         "summary": {"rated": n, "likes": likes, "passes": n - likes, "baseline": baseline,
                     "sources": dict(Counter(p.source for p in profiles.values())),
-                    "visual_covered": covered_visual, "visual_note": visual_note, "source": source},
+                    "visual_covered": covered_visual, "visual_note": visual_note, "source": source,
+                    "fake": {"threshold": fake_threshold, "excluded": len(excluded),
+                             "excluded_likes": sum(e["liked"] for e in excluded), "examples": excluded[:40]}},
         "highlights": highlights(cards, baseline),
         "cards": [c.to_dict() for c in cards],
     }
