@@ -107,6 +107,38 @@ def create_app() -> FastAPI:
     def review_page():
         return FileResponse(STATIC / "review.html")
 
+    @app.get("/api/browse")
+    def browse(model_name: str = "default"):
+        """Read-only list of every saved profile with the model's score and your rating (if any). Rates nothing."""
+        with db.session() as conn:
+            trained = model.load(model_name)
+            human = db.latest_ratings(conn)
+            items = []
+            for (pid,) in conn.execute("SELECT id FROM profiles ORDER BY id").fetchall():
+                p = db.get_profile(conn, pid)
+                items.append({"id": pid, "name": p.name, "age": p.age, "source": p.source, "yours": human.get(pid),
+                              "score": model.score_profile(conn, trained, pid) if trained else None})
+            return {"items": items, "model_active": trained is not None, "sources": sorted({i["source"] for i in items})}
+
+    @app.get("/api/browse/{profile_id}")
+    def browse_profile(profile_id: int, model_name: str = "default"):
+        """One profile for browsing: card, the model's score, and what drove it. Rates nothing."""
+        with db.session() as conn:
+            if not conn.execute("SELECT 1 FROM profiles WHERE id=?", (profile_id,)).fetchone():
+                raise HTTPException(404, "unknown profile")
+            trained = model.load(model_name)
+            emb = db.profile_embeddings(conn, profile_id, trained.embed_model) if trained else None
+            why = None
+            if trained and emb is not None and emb.size:
+                why = model.explain_blocks(trained, emb, db.text_embedding(conn, profile_id, trained.embed_model))
+            card = _card(conn, profile_id, model.score_profile(conn, trained, profile_id) if trained else None)
+            return {"profile": card, "yours": db.latest_ratings(conn).get(profile_id), "why": why,
+                    "model_active": trained is not None}
+
+    @app.get("/browse")
+    def browse_page():
+        return FileResponse(STATIC / "browse.html")
+
     @app.get("/api/insights")
     def get_insights(source: str | None = None, fake_threshold: int | None = None):
         """Like-rate statistics per attribute (profile data and CLIP visual guesses); see insights.py.

@@ -126,3 +126,17 @@ def test_fake_endpoint_marks_passes_and_undo_clears(client):
     assert client.post("/api/undo").status_code == 200
     assert client.get("/api/next").json()["profile"]["id"] == pid
     assert client.post("/api/fake", json={"profile_id": 999999, "is_fake": True}).status_code == 404
+
+
+def test_browse_lists_profiles_without_rating_anything(client):
+    assert client.get("/api/browse").json()["items"] == []
+    r = client.post("/api/profiles", files=[("photos", ("a.png", png(), "image/png"))], data={"name": "Ann"})
+    pid = r.json()["id"]
+
+    b = client.get("/api/browse").json()
+    assert [(i["name"], i["yours"], i["score"]) for i in b["items"]] == [("Ann", None, None)] and not b["model_active"]
+    one = client.get(f"/api/browse/{pid}").json()
+    assert one["profile"]["name"] == "Ann" and one["why"] is None
+    assert client.get("/api/browse/999").status_code == 404
+    assert client.get("/api/next").json()["stats"]["rated"] == 0   # browsing rated nothing
+    assert client.get("/browse").status_code == 200

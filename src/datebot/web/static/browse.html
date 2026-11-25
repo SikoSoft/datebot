@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datebot browse</title>
+<style>
+  :root { --bg:#f6f5f3; --fg:#1d1d1f; --card:#fff; --muted:#6e6e73; --like:#1f9d55; --pass:#d64545; --line:#e3e1dd; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#f2f2f2; --card:#1e1e1e; --muted:#9a9aa0; --line:#2e2e2e; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; }
+  a.sm, button.sm, select, input { padding:7px 12px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; font-size:13px; text-decoration:none; }
+  button.sm { cursor:pointer; }
+  main { max-width:640px; margin:16px auto; padding:0 16px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+  .hint { color:var(--muted); font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; }
+  .photos { display:flex; gap:6px; overflow-x:auto; }
+  .photos img { height:360px; border-radius:10px; background:#000; flex:none; max-width:100%; object-fit:cover; }
+  .top { display:flex; justify-content:space-between; align-items:baseline; margin:10px 0 4px; }
+  .top h2 { margin:0; font-size:19px; }
+  .score { font-size:26px; font-weight:700; }
+  .tag { display:inline-block; padding:1px 9px; border-radius:99px; font-size:12px; font-weight:600; color:#fff; }
+  .tag.like { background:var(--like); } .tag.pass { background:var(--pass); } .tag.none { background:var(--muted); }
+  p.bio { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); }
+  .why { margin-top:10px; font-size:13px; }
+  .why div { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .why .lbl { width:110px; flex:none; }
+  .why .track { flex:1; height:8px; background:var(--line); border-radius:4px; position:relative; }
+  .why .fill { position:absolute; top:0; height:100%; border-radius:4px; }
+  .why .num { width:50px; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .nav { display:flex; gap:8px; align-items:center; justify-content:center; margin-top:12px; }
+  #pos { min-width:90px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Browse (read-only)</h1>
+  <span><a class="sm" href="/review">Review</a> <a class="sm" href="/insights">Insights</a> <a class="sm" href="/">← Rate profiles</a></span>
+</header>
+<main>
+  <div class="bar">
+    <select id="sort">
+      <option value="score-desc">Score: high → low</option>
+      <option value="score-asc">Score: low → high</option>
+      <option value="gap">Biggest disagreement with you</option>
+      <option value="new">Newest first</option>
+      <option value="old">Oldest first</option>
+    </select>
+    <select id="state">
+      <option value="all">All</option><option value="rated">Rated by you</option>
+      <option value="unrated">Unrated</option><option value="liked">You liked</option><option value="passed">You passed</option>
+    </select>
+    <select id="source"><option value="">All apps</option></select>
+    <input id="jump" type="number" min="1" placeholder="Go to #" style="width:90px">
+  </div>
+  <div class="hint">Nothing here rates or changes anything. ← / → (or J / K) move between profiles.</div>
+  <div id="view"></div>
+  <div class="nav">
+    <button class="sm" id="prev">← Prev</button><span id="pos" class="hint"></span><button class="sm" id="next">Next →</button>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let all = [], list = [], idx = 0, modelActive = false;
+
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+const api = async path => { const r = await fetch(path); const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.detail || r.statusText); return b; };
+
+function gap(i) { return i.score == null || i.yours == null ? -1 : Math.abs(i.score / 100 - (i.yours ? 1 : 0)); }
+
+function apply() {
+  const state = $('state').value, src = $('source').value, sort = $('sort').value;
+  list = all.filter(i =>
+    (!src || i.source === src) &&
+    (state === 'all' || (state === 'rated' && i.yours != null) || (state === 'unrated' && i.yours == null) ||
+     (state === 'liked' && i.yours === true) || (state === 'passed' && i.yours === false)));
+  const by = {
+    'score-desc': (a, b) => (b.score ?? -1) - (a.score ?? -1),
+    'score-asc': (a, b) => (a.score ?? 101) - (b.score ?? 101),
+    gap: (a, b) => gap(b) - gap(a),
+    new: (a, b) => b.id - a.id,
+    old: (a, b) => a.id - b.id,
+  };
+  list.sort(by[sort]);
+  idx = 0;
+  show();
+}
+
+async function show() {
+  const v = $('view');
+  v.replaceChildren();
+  $('pos').textContent = list.length ? `${idx + 1} / ${list.length}` : '0 / 0';
+  if (!list.length) { v.append(el('div', 'hint', 'No profiles match.')); return; }
+  const id = list[idx].id;
+  let d;
+  try { d = await api('/api/browse/' + id); } catch (e) { v.append(el('div', 'hint', e.message)); return; }
+  if (list[idx].id !== id) return;  // user moved on while loading
+  const p = d.profile, card = el('div', 'card');
+  const photos = el('div', 'photos');
+  for (const src of p.photos) { const im = el('img'); im.src = src; im.loading = 'lazy'; photos.append(im); }
+  card.append(photos);
+  const top = el('div', 'top');
+  top.append(el('h2', '', `${p.name || '(no name)'}${p.age ? ', ' + p.age : ''}`));
+  top.append(el('span', 'score', p.score == null ? '–' : Math.round(p.score)));
+  card.append(top);
+  const meta = el('div', 'hint', `#${p.id} · ${p.source} · model guess ${p.score == null ? 'n/a' : Math.round(p.score) + '/100'} · you: `);
+  meta.append(el('span', 'tag ' + (d.yours == null ? 'none' : d.yours ? 'like' : 'pass'), d.yours == null ? 'unrated' : d.yours ? 'liked' : 'passed'));
+  card.append(meta);
+  if (p.bio) card.append(el('p', 'bio', p.bio));
+  if (!d.model_active) card.append(el('div', 'hint', 'No trained model yet: run train first.'));
+  else if (!d.why) card.append(el('div', 'hint', 'No embeddings for this profile yet (run datebot embed).'));
+  else card.append(why(d.why));
+  v.append(card);
+}
+
+function why(w) {
+  const box = el('div', 'why');
+  box.append(el('div', 'hint', 'What pushed the score (log-odds; green = towards like, red = towards pass)'));
+  const max = Math.max(0.5, ...w.factors.map(f => Math.abs(f.logit)));
+  for (const f of w.factors) {
+    const row = el('div');
+    row.append(el('span', 'lbl', f.name));
+    const track = el('span', 'track'), fill = el('span', 'fill');
+    const half = Math.abs(f.logit) / max * 50;
+    fill.style.width = half + '%';
+    fill.style.left = f.logit >= 0 ? '50%' : (50 - half) + '%';
+    fill.style.background = f.logit >= 0 ? 'var(--like)' : 'var(--pass)';
+    track.append(fill);
+    row.append(track, el('span', 'num', (f.logit >= 0 ? '+' : '') + f.logit.toFixed(2)));
+    box.append(row);
+  }
+  box.append(el('div', 'hint', `Baseline (intercept) ${w.intercept.toFixed(2)}; baseline + factors = the model's log-odds.`));
+  return box;
+}
+
+const step = d => { if (list.length) { idx = (idx + d + list.length) % list.length; show(); } };
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+$('jump').onchange = () => { const n = parseInt($('jump').value, 10); if (n >= 1 && n <= list.length) { idx = n - 1; show(); } };
+for (const id of ['sort', 'state', 'source']) $(id).onchange = apply;
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT'].includes(e.target.tagName)) return;
+  if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'k') step(1);
+  if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'j') step(-1);
+});
+
+(async () => {
+  const d = await api('/api/browse');
+  all = d.items; modelActive = d.model_active;
+  for (const s of d.sources) { const o = el('option', '', s); o.value = s; $('source').append(o); }
+  if (!modelActive) $('sort').value = 'new';
+  apply();
+})();
+</script>
+</body>
+</html>
