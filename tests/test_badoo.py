@@ -15,6 +15,7 @@ def user(i, **kw):
          "profile_fields": [
              {"id": "location", "type": 1, "name": "Current location", "display_value": "Malmo"},
              {"id": "aboutme_text", "type": 2, "name": "About me", "display_value": "Love dogs"},
+             {"id": "height", "type": 13, "name": "Height", "display_value": "178 cm", "value": "1780"},
              {"id": "smoking", "type": 8, "name": "Smoking", "display_value": "Non-smoker"},
              {"id": "229", "type": 26, "name": "Weekends?", "display_value": "Hiking"},
              {"id": "languages", "type": 11, "name": "You speak", "display_value": "Swedish"}],
@@ -47,6 +48,7 @@ def test_parse_encounters():
     assert p.extra["prompts"] == ["Weekends?: Hiking"]
     assert "Smoking: Non-smoker" in p.extra["descriptors"] and "Looking for: Ready for a relationship" in p.extra["descriptors"]
     assert not any("Swedish" in d for d in p.extra["descriptors"])
+    assert p.extra["height_cm"] == 178 and not any("Height" in d for d in p.extra["descriptors"])
 
 
 def test_parse_encounters_is_defensive():

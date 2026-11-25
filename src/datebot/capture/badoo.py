@@ -11,6 +11,7 @@ Badoo exposes no distance in this feed, only a city, so the distance filter cann
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urlparse
 
 from datebot.capture.tinder import CapturedProfile, Swipe
@@ -25,7 +26,8 @@ MAX_PHOTOS = 6
 PROMPT_TYPE = 26  # profile_fields of this type are "question -> answer" prompts
 SKIP_FIELDS = {"location", "aboutme_text", "languages", "education_level_array"}  # bio is read separately; the rest is noise
 LABELLED_FIELDS = {"relationship", "sexuality", "children", "smoking", "drinking", "pet", "belief", "zodiac",
-                   "personality", "work", "education", "height"}
+                   "personality", "work", "education"}
+HEIGHT_RE = re.compile(r"(\d{2,3})\s*cm\b", re.IGNORECASE)
 
 
 def is_badoo_url(url: str) -> bool:
@@ -81,6 +83,9 @@ def _profile(item: dict) -> CapturedProfile | None:
     if bio is None:
         bio = next((t for t in map(_text, user.get("displayed_about_me") or []) if t), None)
     prompts, descriptors = [], []
+    # Height is a rule input, not taste: kept out of the text descriptors so it is never embedded.
+    height = next((int(m.group(1)) for f in fields if f.get("id") == "height"
+                   and (m := HEIGHT_RE.search(_text(f.get("display_value")) or ""))), None)
     for f in fields:
         value, label = _text(f.get("display_value")), _text(f.get("name"))
         if not value or f.get("id") in SKIP_FIELDS:
@@ -98,6 +103,7 @@ def _profile(item: dict) -> CapturedProfile | None:
         "interests": [n for n in (_text(i.get("name")) for i in user.get("interests") or [] if isinstance(i, dict)) if n],
         "prompts": prompts,
         "descriptors": descriptors,
+        "height_cm": height,
     }
     age = user.get("age")
     return CapturedProfile(
