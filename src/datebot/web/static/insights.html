@@ -105,7 +105,7 @@ const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const pct = x => Math.round(x * 100) + '%';
 const KEY = 'datebot.insights.hidden';
-let data = null;
+let data = null, say_stale = false;
 let hidden = new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
 const saveHidden = () => { localStorage.setItem(KEY, JSON.stringify([...hidden])); };
 
@@ -156,6 +156,7 @@ function renderCard(c, base) {
 
 function render() {
   const s = data.summary, base = s.baseline;
+  if (!s.fake) { s.fake = { threshold: null, excluded: 0, excluded_likes: 0, examples: [] }; say_stale = true; }
   $('minnv').textContent = $('minn').value;
   const q = $('q').value.trim().toLowerCase();
 
@@ -170,6 +171,7 @@ function render() {
   $('legendRow').replaceChildren(lr);
   const t = $('tiles'); t.replaceChildren(tile(s.rated, 'rated profiles'), tile(s.likes, 'likes'), tile(s.passes, 'passes'), tile(pct(base), 'like rate'));
   if (s.fake.threshold !== null) t.append(tile(s.fake.excluded, `likely fakes left out (${s.fake.excluded_likes} liked)`));
+  if (say_stale) t.append(tile('!', 'server is running old code: restart `datebot ui` to enable the fake filter'));
   if (s.visual_note) { const n = el('div', 'tile'); n.append(el('span', '', s.visual_note)); t.append(n); }
 
   $('fakev').textContent = +$('fake').value > 100 ? 'off' : $('fake').value;
