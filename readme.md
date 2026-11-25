@@ -230,6 +230,8 @@ Dumps live in `data/hinge-probe/` (gitignored): other people's profile data, kee
 
 ## Capturing from Hinge (iPhone)
 
+Endpoint and data-contract notes for every app live in [docs/api-endpoints.md](docs/api-endpoints.md).
+
 Same phone setup as the probe above (proxy + trusted mitmproxy certificate on the iPhone), but with the real recorder.
 Needs the `phone` extra: `uv sync --extra phone`.
 
