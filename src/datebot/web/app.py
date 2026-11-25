@@ -25,6 +25,8 @@ class FiltersBody(BaseModel):
     max_distance_km: float | None = None
     blocked_keywords: list[str] = []
     required_keywords: list[str] = []
+    reject_height_from_cm: int | None = None
+    field_keywords: dict[str, list[str]] = {}
 
 
 def _stats(conn) -> dict:
@@ -105,7 +107,8 @@ def create_app() -> FastAPI:
 
     @app.put("/api/filters")
     def put_filters(body: FiltersBody):
-        f = filters.Filters(**body.model_dump())
+        # Fields the client did not send (the panel has no height/field controls yet) keep their saved value.
+        f = filters.Filters(**{**asdict(filters.load()), **body.model_dump(exclude_unset=True)})
         if f.min_age is not None and f.max_age is not None and f.min_age > f.max_age:
             raise HTTPException(400, "min_age is greater than max_age")
         filters.save(f)

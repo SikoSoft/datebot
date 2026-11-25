@@ -64,7 +64,7 @@ def test_filters_hide_profiles_from_queue(client):
     assert client.get("/api/next").json()["profile"]["age"] == 30
 
     assert client.put("/api/filters", json={"min_age": 40, "max_age": 30}).status_code == 400
-    assert client.put("/api/filters", json={}).json()["stats"]["hidden"] == 0
+    assert client.put("/api/filters", json={"min_age": None, "max_age": None}).json()["stats"]["hidden"] == 0
 
 
 def test_eval_endpoint_explains_when_not_ready(client):
@@ -105,3 +105,9 @@ def test_review_page_is_served(client):
     r = client.get("/review")
     assert r.status_code == 200 and "Review queue" in r.text
     assert 'href="/review"' in client.get("/").text
+
+
+def test_saving_filters_from_the_panel_keeps_rules_it_cannot_edit(client):
+    client.put("/api/filters", json={"reject_height_from_cm": 178, "field_keywords": {"politics": ["left"]}})
+    r = client.put("/api/filters", json={"min_age": 21}).json()["filters"]
+    assert r["min_age"] == 21 and r["reject_height_from_cm"] == 178 and r["field_keywords"] == {"politics": ["left"]}
