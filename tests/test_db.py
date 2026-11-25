@@ -144,3 +144,28 @@ def test_auto_swipes_today_counts_only_auto_and_only_today(conn):
     db.add_rating(conn, old, False, origin="auto")
     conn.execute("UPDATE ratings SET created_at = '2020-01-01 12:00:00' WHERE profile_id = ?", (old,))
     assert db.auto_swipes_today(conn) == 1
+
+
+def test_interactions_roundtrip_and_survive_profile_removal(tmp_path):
+    conn = db.connect(str(tmp_path / "t.db"))
+    pid = db.add_profile(conn, "hinge", [], external_id="u1")
+    rid = db.add_rating(conn, pid, True, origin="app")
+    sid = db.start_session(conn, "hinge", "iphone-proxy", 100.0)
+    db.add_interaction(conn, sid, "hinge", "app", 110.0, "timing", {"a": 1}, {"dwell_ms": 10000}, 1,
+                       profile_id=pid, external_id="u1", rating_id=rid, liked=True)
+    db.add_interaction(conn, sid, "hinge", "auto", 111.0, "timing", {}, {}, 1, external_id="x")
+    rows = db.interactions(conn)
+    assert len(rows) == 1 and db.raw_of(rows[0]) == {"a": 1} and rows[0]["rating_id"] == rid
+    assert len(db.interactions(conn, origin=None)) == 2
+    conn.execute("DELETE FROM profiles WHERE id = ?", (pid,))
+    assert db.interactions(conn)[0]["profile_id"] is None  # telemetry outlives its profile
+
+
+def test_clear_interactions_keeps_profiles_and_ratings(tmp_path):
+    conn = db.connect(str(tmp_path / "t.db"))
+    pid = db.add_profile(conn, "hinge", [], external_id="u1")
+    db.add_rating(conn, pid, True, origin="app")
+    sid = db.start_session(conn, "hinge", "", 1.0)
+    db.add_interaction(conn, sid, "hinge", "app", 2.0, "timing", {}, {}, 1, profile_id=pid)
+    assert db.clear_interactions(conn) == 1
+    assert db.interactions(conn) == [] and db.latest_ratings(conn) == {pid: True}

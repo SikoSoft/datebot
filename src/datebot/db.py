@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import zlib
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
@@ -42,7 +43,34 @@ CREATE TABLE IF NOT EXISTS ratings (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Behaviour telemetry (see behavior.py). Separate from ratings: a profile never needs an interaction.
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY,
+    source TEXT NOT NULL,
+    device TEXT NOT NULL DEFAULT '',   -- e.g. desktop-chrome | iphone-proxy
+    started_at REAL NOT NULL,          -- epoch seconds
+    ended_at REAL
+);
+
+CREATE TABLE IF NOT EXISTS interactions (
+    id INTEGER PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    profile_id INTEGER REFERENCES profiles(id) ON DELETE SET NULL,
+    external_id TEXT,                  -- id within the app, kept so an uncaptured profile can be linked later
+    rating_id INTEGER REFERENCES ratings(id) ON DELETE SET NULL,
+    source TEXT NOT NULL,
+    origin TEXT NOT NULL,              -- app (you) | auto (the bot); only 'app' may ever be learned from
+    liked INTEGER,
+    decided_at REAL NOT NULL,          -- epoch seconds of the swipe
+    signal TEXT NOT NULL,              -- timing (network timestamps only) | pointer (browser input events)
+    raw BLOB NOT NULL,                 -- zlib JSON of the inputs the features are derived from
+    features TEXT NOT NULL,            -- JSON derived from raw
+    feature_version INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_photos_profile ON photos(profile_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_profile ON interactions(profile_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_session ON interactions(session_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_profile ON ratings(profile_id);
 """
 
@@ -144,10 +172,59 @@ def photo_paths(conn: sqlite3.Connection, profile_id: int) -> list[str]:
     return [r["path"] for r in rows]
 
 
-def add_rating(conn: sqlite3.Connection, profile_id: int, liked: bool, origin: str = "manual") -> None:
-    conn.execute(
+def add_rating(conn: sqlite3.Connection, profile_id: int, liked: bool, origin: str = "manual") -> int:
+    return conn.execute(
         "INSERT INTO ratings (profile_id, liked, origin) VALUES (?, ?, ?)", (profile_id, int(liked), origin)
+    ).lastrowid
+
+
+def start_session(conn: sqlite3.Connection, source: str, device: str, started_at: float) -> int:
+    return conn.execute(
+        "INSERT INTO sessions (source, device, started_at) VALUES (?, ?, ?)", (source, device, started_at)
+    ).lastrowid
+
+
+def end_session(conn: sqlite3.Connection, session_id: int, ended_at: float) -> None:
+    conn.execute("UPDATE sessions SET ended_at = ? WHERE id = ?", (ended_at, session_id))
+
+
+def add_interaction(
+    conn: sqlite3.Connection, session_id: int, source: str, origin: str, decided_at: float, signal: str,
+    raw: dict, features: dict, feature_version: int, profile_id: int | None = None,
+    external_id: str | None = None, rating_id: int | None = None, liked: bool | None = None,
+) -> int:
+    return conn.execute(
+        "INSERT INTO interactions (session_id, profile_id, external_id, rating_id, source, origin, liked, "
+        "decided_at, signal, raw, features, feature_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (session_id, profile_id, external_id, rating_id, source, origin, None if liked is None else int(liked),
+         decided_at, signal, zlib.compress(json.dumps(raw, separators=(",", ":")).encode()),
+         json.dumps(features), feature_version),
+    ).lastrowid
+
+
+def interactions(conn: sqlite3.Connection, origin: str | None = "app") -> list[sqlite3.Row]:
+    """Interaction rows (with decoded raw available via `raw_of`), oldest first. origin=None returns all origins."""
+    if origin is None:
+        return conn.execute("SELECT * FROM interactions ORDER BY decided_at, id").fetchall()
+    return conn.execute("SELECT * FROM interactions WHERE origin = ? ORDER BY decided_at, id", (origin,)).fetchall()
+
+
+def raw_of(row: sqlite3.Row) -> dict:
+    return json.loads(zlib.decompress(row["raw"]))
+
+
+def set_interaction_features(conn: sqlite3.Connection, interaction_id: int, features: dict, version: int) -> None:
+    conn.execute(
+        "UPDATE interactions SET features = ?, feature_version = ? WHERE id = ?",
+        (json.dumps(features), version, interaction_id),
     )
+
+
+def clear_interactions(conn: sqlite3.Connection) -> int:
+    """Erase all behaviour telemetry (sessions and interactions). Profiles and ratings are untouched."""
+    n = conn.execute("DELETE FROM interactions").rowcount
+    conn.execute("DELETE FROM sessions")
+    return n
 
 
 HUMAN_ORIGINS = ("manual", "app")  # decisions a person made; the only ratings the model may learn from
