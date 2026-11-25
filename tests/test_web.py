@@ -117,3 +117,12 @@ def test_insights_endpoint_and_page(client):
     assert client.get("/insights").status_code == 200
     body = client.get("/api/insights").json()
     assert body["summary"]["rated"] == 0 and body["cards"] == []
+
+
+def test_fake_endpoint_marks_passes_and_undo_clears(client):
+    pid = client.post("/api/profiles", files=[("photos", ("a.png", png(), "image/png"))]).json()["id"]
+    assert client.post("/api/fake", json={"profile_id": pid, "is_fake": True, "and_pass": True}).json()["rated"] == 1
+    assert client.get("/api/next").json()["profile"] is None
+    assert client.post("/api/undo").status_code == 200
+    assert client.get("/api/next").json()["profile"]["id"] == pid
+    assert client.post("/api/fake", json={"profile_id": 999999, "is_fake": True}).status_code == 404

@@ -19,6 +19,12 @@ class RateBody(BaseModel):
     liked: bool
 
 
+class FakeBody(BaseModel):
+    profile_id: int
+    is_fake: bool | None  # null clears your mark
+    and_pass: bool = False
+
+
 class FiltersBody(BaseModel):
     min_age: int | None = None
     max_age: int | None = None
@@ -135,10 +141,23 @@ def create_app() -> FastAPI:
             db.add_rating(conn, body.profile_id, body.liked)
             return _stats(conn)
 
+    @app.post("/api/fake")
+    def mark_fake(body: FakeBody):
+        """Mark a profile fake (also passes it when `and_pass`, so it leaves the rating queue), real, or clear the mark."""
+        with db.session() as conn:
+            if db.get_profile(conn, body.profile_id) is None:
+                raise HTTPException(404, "no such profile")
+            db.set_fake_mark(conn, body.profile_id, body.is_fake)
+            if body.is_fake and body.and_pass:
+                db.add_rating(conn, body.profile_id, False)
+            return _stats(conn)
+
     @app.post("/api/undo")
     def undo():
         with db.session() as conn:
             pid = db.undo_last_rating(conn)
+            if pid is not None and db.fake_marks(conn).get(pid) is True:
+                db.set_fake_mark(conn, pid, None)  # undoing "fake + pass" restores the profile fully
             return {"undone_profile_id": pid, "stats": _stats(conn)}
 
     @app.post("/api/profiles")

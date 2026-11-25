@@ -64,8 +64,8 @@
     <button id="pass">✕ Pass</button>
     <button id="like">♥ Like</button>
   </div>
-  <div class="row"><button class="sm" id="undo">↶ Undo</button></div>
-  <div class="hint">Keys: ← pass · → like · Z undo · ↑/↓ photos</div>
+  <div class="row"><button class="sm" id="undo">↶ Undo</button> <button class="sm" id="fake" title="Scam/fake: passes it and leaves it out of the insights stats">🚩 Fake (F)</button></div>
+  <div class="hint">Keys: ← pass · → like · F fake · Z undo · ↑/↓ photos</div>
   <details class="filters">
     <summary>Deal-breakers <span id="hiddenCount" style="font-weight:400;color:var(--muted)"></span></summary>
     <div class="pair">
@@ -172,6 +172,13 @@ async function rate(liked) {
 
 $('like').onclick = () => rate(true);
 $('pass').onclick = () => rate(false);
+$('fake').onclick = async () => {
+  if (!current || busy) return;
+  busy = true;
+  try { await post('/api/fake', { profile_id: current.id, is_fake: true, and_pass: true }); await load(); say('Marked fake and passed.'); }
+  catch (e) { say(e.message); }
+  finally { busy = false; }
+};
 $('undo').onclick = async () => { try { await post('/api/undo'); await load(); } catch (e) { say(e.message); } };
 $('train').onclick = async () => {
   say('Embedding photos and training…');
@@ -206,6 +213,7 @@ addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft') rate(false);
   else if (e.key === 'ArrowUp') step(-1);
   else if (e.key === 'ArrowDown') step(1);
+  else if (e.key.toLowerCase() === 'f') $('fake').click();
   else if (e.key.toLowerCase() === 'z') $('undo').click();
 });
 
