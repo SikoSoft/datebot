@@ -129,3 +129,14 @@ def test_lead_photo_is_what_the_model_learns_when_other_photos_are_noise(conn):
             db.set_embedding(conn, photo_id, vec, EMBED)
         db.add_rating(conn, pid, liked)
     assert model.train(conn, EMBED).cv_accuracy > 0.9
+
+
+def test_explain_blocks_sum_to_the_score(conn):
+    rng, good, _ = seed(conn)
+    trained = model.train(conn, EMBED)
+    pid = add(conn, good, rng)
+    emb = db.profile_embeddings(conn, pid, EMBED)
+    out = model.explain_blocks(trained, emb, None)
+    assert [f["name"] for f in out["factors"]] == model.BLOCKS
+    logit = out["intercept"] + sum(f["logit"] for f in out["factors"])
+    assert 1 / (1 + np.exp(-logit)) * 100 == pytest.approx(model.score(trained, emb), abs=1e-3)

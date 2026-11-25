@@ -137,6 +137,21 @@ def score_profile(conn: sqlite3.Connection, trained: Trained, profile_id: int) -
     return score(trained, emb, db.text_embedding(conn, profile_id, trained.embed_model))
 
 
+BLOCKS = ["photo average", "best photo", "lead photo", "text average", "best text line", "has text"]
+
+
+def explain_blocks(trained: Trained, embeddings: np.ndarray, text_embedding: np.ndarray | None = None) -> dict:
+    """Why a profile got its score. The classifier is linear, so the log-odds split exactly into one
+    contribution per feature block (positive pushes towards like) plus the intercept."""
+    x = featurize(embeddings, text_embedding)
+    w = trained.clf.coef_[0]
+    dim = (len(x) - 1) // 5
+    edges = [0, dim, 2 * dim, 3 * dim, 4 * dim, 5 * dim, 5 * dim + 1]  # one slice per name in BLOCKS
+    contributions = [float(w[lo:hi] @ x[lo:hi]) for lo, hi in zip(edges, edges[1:])]
+    return {"intercept": float(trained.clf.intercept_[0]),
+            "factors": [{"name": n, "logit": c} for n, c in zip(BLOCKS, contributions)]}
+
+
 def most_uncertain(
     conn: sqlite3.Connection, trained: Trained, limit: int = 10, candidates: list[int] | None = None
 ) -> list[tuple[int, float]]:
