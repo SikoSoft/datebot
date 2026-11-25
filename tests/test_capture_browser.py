@@ -91,3 +91,45 @@ def test_attach_records_profiles_and_swipes_from_live_browser_traffic(fake_tinde
     assert (rec.counts.new, rec.counts.swipes, rec.counts.unknown_swipes) == (2, 2, 1)
     assert any("recs: 2 profiles" in m for m in logs)
     assert len(list(dump.glob("*-recs.json"))) == 1 and len(list(dump.glob("*-like.json"))) == 2
+
+
+CLICK_PAGE = b"""<button id=like style="position:fixed;left:100px;top:100px;width:80px;height:40px">like</button>
+<script>
+fetch('/v2/recs/core?locale=en');
+document.getElementById('like').addEventListener('click', () => fetch('/like/u1?locale=en'));
+</script>"""
+
+
+@pytest.mark.slow
+def test_pointer_telemetry_reaches_the_interaction_for_a_real_click(fake_tinder, tmp_path, monkeypatch):
+    from datebot.capture import telemetry
+    from datebot.interactions import InteractionTracker
+
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    db_path = str(tmp_path / "t.db")
+    rec = Recorder(db_path=db_path, tracker=InteractionTracker("tinder", "desktop-chrome"))
+    events = telemetry.EventBuffer()
+    with sync_playwright() as pw:
+        chrome = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = chrome.new_context()
+        telemetry.install(ctx, events)
+        browser.attach(ctx, rec, hosts=("127.0.0.1",), log=lambda m: None, events=events)
+        page = ctx.new_page()
+        page.route("**/", lambda route: route.fulfill(body=CLICK_PAGE, content_type="text/html"))
+        page.goto(fake_tinder)
+        page.wait_for_timeout(600)
+        page.mouse.move(10, 10)
+        page.mouse.move(80, 90, steps=8)
+        page.keyboard.type("secret")  # must never be recorded
+        page.mouse.move(140, 120, steps=8)
+        page.mouse.click(140, 120)
+        page.wait_for_timeout(800)
+        chrome.close()
+
+    import json
+    row = db.interactions(db.connect(db_path))[0]
+    f = json.loads(row["features"])
+    assert row["signal"] == "pointer" and row["profile_id"] and row["rating_id"]
+    assert f["n_moves"] >= 17 and f["swipe_by_key"] == 0 and abs(f["click_rx"] - 0.5) < 0.1
+    assert "n_keys" not in f
+    assert "secret" not in json.dumps(db.raw_of(row))

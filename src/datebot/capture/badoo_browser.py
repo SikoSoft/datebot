@@ -1,11 +1,12 @@
 """Passively records Badoo profiles and your own swipes from a Chrome window you drive yourself."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Callable
 
 from datebot import config
-from datebot.capture import badoo, discover
+from datebot.capture import badoo, discover, telemetry as input_telemetry
 from datebot.capture.browser import Observer, pump
 from datebot.capture.recorder import Recorder
 
@@ -14,7 +15,8 @@ START_URL = "https://badoo.com/encounters"
 GET_ENCOUNTERS, VOTE = "SERVER_GET_ENCOUNTERS", "SERVER_ENCOUNTERS_VOTE"
 
 
-def attach(context, recorder: Recorder, log: Callable[[str], None] = print, observer: Observer | None = None) -> None:
+def attach(context, recorder: Recorder, log: Callable[[str], None] = print, observer: Observer | None = None,
+           events: input_telemetry.EventBuffer | None = None) -> None:
     def handle(resp) -> None:
         if not resp.ok or resp.request.method != "POST":
             return
@@ -31,7 +33,8 @@ def attach(context, recorder: Recorder, log: Callable[[str], None] = print, obse
                 log("vote with an unrecognized code; ignored")
                 return
             origin = observer.swipe_origin(swipe) if observer else "app"
-            recorded = recorder.record_swipe(swipe, origin=origin)
+            swipe_events = events.drain(time.time() * 1000) if events else None
+            recorded = recorder.record_swipe(swipe, origin=origin, events=swipe_events)
             who = "bot" if origin == "auto" else "you"
             log(f"swipe ({who}): {'liked' if swipe.liked else 'passed'}" if recorded
                 else "swipe on a profile we never captured; skipped")
@@ -66,7 +69,13 @@ def run(recorder: Recorder, cdp: str | None = None, dump_dir: Path | None = None
             log("Chrome opened (logins are remembered). Swipe as usual on Badoo; close the window to stop.")
         try:
             context = pw.chromium.connect_over_cdp(endpoint).contexts[0]
-            attach(context, recorder, log, observer)
+            events = input_telemetry.EventBuffer() if recorder.tracker else None
+            if events:
+                input_telemetry.install(context, events)
+                if not cdp:
+                    for page in context.pages:
+                        page.reload()  # the page was already loading without the listener
+            attach(context, recorder, log, observer, events)
             if dump_dir:
                 discover.attach(context, dump_dir, badoo.HOSTS, log)
             pump(context, tick_ms, (lambda: tick(context)) if tick else None)

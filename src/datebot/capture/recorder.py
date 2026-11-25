@@ -93,6 +93,8 @@ class Recorder:
             return False
         self._skip_pending = False
         self.counts.ignored += 1
+        if self.tracker:
+            self.tracker.advance()  # the next card still starts now, even though this swipe isn't recorded
         return True
 
     def record_swipe(self, swipe: Swipe, origin: str = "app", at_ms: float | None = None,

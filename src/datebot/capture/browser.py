@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from datebot import config
-from datebot.capture import tinder
+from datebot.capture import telemetry as input_telemetry, tinder
 from datebot.capture.recorder import Recorder
 
 START_URL = "https://tinder.com/app/recs"
@@ -47,11 +47,13 @@ def attach(
     dump_dir: Path | None = None,
     log: Callable[[str], None] = print,
     observer: "Observer | None" = None,
+    events: "input_telemetry.EventBuffer | None" = None,
 ) -> None:
     """Listen to every response in `context` (all current and future pages).
 
     An optional `observer` is told about new recommendations and swipes, and chooses the origin a swipe is
     recorded under (the auto-swipe bot uses this to tag its own swipes so they never become training labels).
+    `events` (see telemetry.py) supplies the input events behind each swipe for behaviour interactions.
     """
     def handle(resp) -> None:
         url = resp.url
@@ -70,13 +72,14 @@ def attach(
         elif (swipe := tinder.parse_swipe(url)) is not None:
             _dump(dump_dir, "like" if swipe.liked else "pass", url, resp.status, resp.text())
             origin = observer.swipe_origin(swipe) if observer else "app"
+            swipe_events = events.drain(time.time() * 1000) if events else None
             if recorder.take_skip(origin):
                 log(f"swipe ({'liked' if swipe.liked else 'passed'} {swipe.user_id}): first of the session, "
                     "not recorded (use --keep-first to record it)")
                 if observer:
                     observer.on_swipe(swipe, False, origin)
                 return
-            recorded = recorder.record_swipe(swipe, origin=origin)
+            recorded = recorder.record_swipe(swipe, origin=origin, events=swipe_events)
             who = "bot" if origin == "auto" else "you"
             if recorded:
                 log(f"swipe ({who}): {'liked' if swipe.liked else 'passed'} {swipe.user_id}")
@@ -138,15 +141,20 @@ def run(
 
     with sync_playwright() as pw:
         if cdp:
-            browser = pw.chromium.connect_over_cdp(cdp)
-            context = browser.contexts[0]
-            log("Attached. Reload the Tinder tab so its profiles are captured.")
+            context = pw.chromium.connect_over_cdp(cdp).contexts[0]
         else:
             context = pw.chromium.launch_persistent_context(
                 str(browser_profile_dir()), channel="chrome", headless=False, no_viewport=True
             )
+        events = input_telemetry.EventBuffer() if recorder.tracker else None
+        if events:
+            input_telemetry.install(context, events)  # before any page loads, so the first page has it too
+        attach(context, recorder, dump_dir=dump_dir, log=log, observer=observer, events=events)
+        if cdp:
+            log("Attached. Reload the Tinder tab so its profiles" + (" and your input timing" if events else "")
+                + " are captured.")
+        else:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(START_URL)
             log("Chrome opened. Log in to Tinder yourself, then swipe as usual. Close the window to stop.")
-        attach(context, recorder, dump_dir=dump_dir, log=log, observer=observer)
         pump(context, tick_ms, (lambda: tick(context)) if tick else None)

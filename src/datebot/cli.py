@@ -230,8 +230,9 @@ def capture_tinder(
     """
     from datebot.capture import browser
     from datebot.capture.recorder import Recorder
+    from datebot.interactions import InteractionTracker
 
-    rec = Recorder(skip_first_swipe=not keep_first)
+    rec = Recorder(skip_first_swipe=not keep_first, tracker=InteractionTracker("tinder", "desktop-chrome"))
     try:
         browser.run(rec, cdp=cdp, dump_dir=dump, log=lambda m: typer.echo(f"[capture] {m}"))
     except KeyboardInterrupt:
@@ -253,8 +254,9 @@ def capture_badoo(
     """
     from datebot.capture import badoo_browser
     from datebot.capture.recorder import Recorder
+    from datebot.interactions import InteractionTracker
 
-    rec = Recorder(source="badoo")
+    rec = Recorder(source="badoo", tracker=InteractionTracker("badoo", "desktop-chrome"))
     try:
         badoo_browser.run(rec, cdp=cdp, dump_dir=dump, log=lambda m: typer.echo(f"[badoo] {m}"))
     except KeyboardInterrupt:
