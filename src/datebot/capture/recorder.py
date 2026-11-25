@@ -9,6 +9,7 @@ from typing import Callable
 from urllib.parse import urlparse
 
 from datebot import db, ingest
+from datebot.interactions import InteractionTracker
 from datebot.capture.tinder import CapturedProfile, Swipe
 
 SOURCE = "tinder"
@@ -28,6 +29,8 @@ class Counts:
     failed: int = 0          # profiles skipped because no photo could be downloaded
     swipes: int = 0          # your swipes recorded as ratings
     unknown_swipes: int = 0  # swipes on profiles we never captured
+    interactions: int = 0    # behaviour interactions stored alongside swipes
+    telemetry_failed: int = 0  # swipes whose behaviour telemetry could not be stored (the rating still was)
     ignored: int = 0         # your swipes deliberately not recorded (the session's first-profile freebie)
 
 
@@ -35,8 +38,10 @@ class Recorder:
     """Stores captured profiles and turns your own swipes into labeled ratings (origin='app')."""
 
     def __init__(self, fetch: Fetcher = http_fetch, source: str = SOURCE, db_path: str | None = None,
-                 skip_first_swipe: bool = False):
+                 skip_first_swipe: bool = False,
+                 tracker: InteractionTracker | None = None):
         self.fetch = fetch
+        self.tracker = tracker
         self._skip_pending = skip_first_swipe
         self.source = source
         self.db_path = db_path
@@ -62,6 +67,8 @@ class Recorder:
         with db.session(self.db_path) as conn:
             for p in profiles:
                 self.counts.seen += 1
+                if self.tracker:
+                    self.tracker.profile_ready(p.external_id)  # arrival time, not after the photo downloads
                 if db.find_profile_id(conn, self.source, p.external_id) is not None:
                     continue
                 with tempfile.TemporaryDirectory() as tmp:
@@ -88,15 +95,24 @@ class Recorder:
         self.counts.ignored += 1
         return True
 
-    def record_swipe(self, swipe: Swipe, origin: str = "app") -> bool:
+    def record_swipe(self, swipe: Swipe, origin: str = "app", at_ms: float | None = None,
+                     events: list[dict] | None = None) -> bool:
         """Record a swipe as a rating (origin 'app' = yours, 'auto' = the bot's).
 
+        With a tracker, also stores the behaviour interaction (dwell, input `events`, `at_ms` = when it happened).
         Returns False if the profile was never captured."""
         with db.session(self.db_path) as conn:
             pid = db.find_profile_id(conn, self.source, swipe.user_id)
+            rating_id = None if pid is None else db.add_rating(conn, pid, swipe.liked, origin=origin)
+            if self.tracker:
+                try:  # telemetry is secondary: it must never cost us the rating
+                    if self.tracker.record(conn, external_id=swipe.user_id, profile_id=pid, liked=swipe.liked,
+                                           origin=origin, rating_id=rating_id, decided_ms=at_ms, events=events):
+                        self.counts.interactions += 1
+                except Exception:
+                    self.counts.telemetry_failed += 1
             if pid is None:
                 self.counts.unknown_swipes += 1
                 return False
-            db.add_rating(conn, pid, swipe.liked, origin=origin)
         self.counts.swipes += 1
         return True
