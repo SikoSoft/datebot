@@ -218,6 +218,13 @@ def photos_missing_embeddings(conn: sqlite3.Connection, model: str) -> list[tupl
     return [(r["id"], r["path"]) for r in rows]
 
 
+def count_unembedded_profiles(conn: sqlite3.Connection, model: str) -> int:
+    """Profiles with at least one photo that has no embedding from `model` (they are invisible to train/eval/explain)."""
+    return conn.execute(
+        "SELECT COUNT(DISTINCT profile_id) FROM photos WHERE embedding IS NULL OR embed_model != ?", (model,)
+    ).fetchone()[0]
+
+
 def profile_embeddings(conn: sqlite3.Connection, profile_id: int, model: str) -> np.ndarray:
     """All photo embeddings for a profile as an (n_photos, dim) array."""
     rows = conn.execute(

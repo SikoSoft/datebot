@@ -163,10 +163,11 @@ def create_app() -> FastAPI:
     @app.get("/api/eval")
     def evaluation(like_precision: float = 0.9, pass_precision: float = 0.95):
         """Plain-text evaluation report (same as `datebot eval`)."""
-        from datebot import evaluate
+        from datebot import embed, evaluate
         from datebot.embed import EMBED_ID
 
         with db.session() as conn:
+            embed.embed_pending(conn)
             try:
                 report = evaluate.run(conn, EMBED_ID, like_precision, pass_precision)
             except ValueError as e:

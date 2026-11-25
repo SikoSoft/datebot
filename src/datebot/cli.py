@@ -32,6 +32,19 @@ def import_(
     typer.echo(f"Imported {len(ids)} profile(s). Next: datebot embed")
 
 
+def _embed_new(conn) -> None:
+    """Embed profiles that arrived since the last `embed`, so train/score/eval/explain never silently skip them."""
+    from datebot import embed as embedder
+
+    try:
+        n = embedder.embed_pending(conn)
+    except ImportError:
+        typer.secho("New photos need embedding but CLIP is not installed. Run: uv sync --extra embed", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    if n:
+        typer.echo(f"Embedded {n} new photo(s) first.")
+
+
 @app.command()
 def embed() -> None:
     """Compute local CLIP embeddings for any photos that lack them."""
@@ -48,6 +61,7 @@ def train(name: str = typer.Option("default", help="Model name; use different na
     from datebot.embed import EMBED_ID
 
     with db.session() as conn:
+        _embed_new(conn)
         try:
             t = model.train(conn, EMBED_ID, name)
         except ValueError as e:
@@ -69,6 +83,7 @@ def score(
         typer.secho(f"No model '{name}'. Run: datebot train", fg=typer.colors.RED)
         raise typer.Exit(1)
     with db.session() as conn:
+        _embed_new(conn)
         eligible = hard_filters.eligible_unrated(conn)
         if uncertain:
             rows = model.most_uncertain(conn, trained, limit, candidates=eligible)
@@ -113,9 +128,13 @@ def stats() -> None:
         total = conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
         auto = len(db.auto_swiped_ids(conn))
         unrated = len(db.unrated_profile_ids(conn))
+        from datebot.embed import EMBED_ID
+
+        pending = db.count_unembedded_profiles(conn, EMBED_ID)
     likes = sum(ratings.values())
     typer.echo(f"{total} profiles, {len(ratings)} rated by you ({likes} likes, {len(ratings) - likes} passes), "
-               f"{auto} auto-swiped, {unrated} unrated")
+               f"{auto} auto-swiped, {unrated} unrated"
+               + (f"; {pending} not embedded yet (train/eval/explain will do it, or run: datebot embed)" if pending else ""))
 
 
 @app.command()
@@ -330,6 +349,7 @@ def explain(
         typer.secho(f"No attributes selected. Groups: {', '.join(ex.GROUPS)}", fg=typer.colors.RED)
         raise typer.Exit(1)
     with db.session() as conn:
+        _embed_new(conn)
         pids, paths, emb = db.all_photo_embeddings(conn, EMBED_ID)
         ratings = db.latest_ratings(conn)
     if not len(pids):
@@ -356,6 +376,7 @@ def eval_(
     from datebot.embed import EMBED_ID
 
     with db.session() as conn:
+        _embed_new(conn)
         try:
             report = evaluate.run(conn, EMBED_ID, like_precision, pass_precision)
         except ValueError as e:
