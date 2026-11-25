@@ -240,6 +240,15 @@ def surprises(ids: list[int], y: np.ndarray, oof: np.ndarray, k: int = 5) -> lis
 
 
 @dataclass
+class SourceStat:
+    source: str
+    n: int
+    likes: int
+    auc: float | None  # how well the pooled model ranks this source's profiles (cross-validated)
+    accuracy: float
+
+
+@dataclass
 class Report:
     n: int
     likes: int
@@ -251,6 +260,7 @@ class Report:
     thresholds: Thresholds
     surprises: list[Surprise]
     warnings: list[str]
+    by_source: list[SourceStat]
 
 
 def verdict(auc: float | None) -> str:
@@ -260,6 +270,19 @@ def verdict(auc: float | None) -> str:
         if auc >= bound:
             return word
     return "barely better than guessing"
+
+
+def by_source(conn, ids: list[int], y: np.ndarray, oof: np.ndarray) -> list[SourceStat]:
+    """Cross-validated quality per app, from the pooled model's out-of-fold scores. Biggest source first."""
+    marks = ",".join("?" * len(ids))
+    src = {r["id"]: r["source"] for r in conn.execute(f"SELECT id, source FROM profiles WHERE id IN ({marks})", ids)}
+    names = np.array([src[i] for i in ids])
+    out = []
+    for name in sorted(set(names), key=lambda n: (-(names == n).sum(), n)):
+        m = names == name
+        out.append(SourceStat(name, int(m.sum()), int(y[m].sum()), safe_auc(y[m], oof[m]),
+                              float(accuracy_score(y[m], (oof[m] >= 0.5).astype(int)))))
+    return out
 
 
 def run(conn, embed_model: str, like_precision: float = 0.9, pass_precision: float = 0.95) -> Report:
@@ -285,7 +308,7 @@ def run(conn, embed_model: str, like_precision: float = 0.9, pass_precision: flo
         n=len(y), likes=int(y.sum()), passes=len(y) - int(y.sum()), headline=head,
         ablation=ablation(X, y), drift=drift, curve=learning_curve(X, y),
         thresholds=suggest_thresholds(y, oof, like_precision, pass_precision),
-        surprises=surprises(ids, y, oof), warnings=warnings,
+        surprises=surprises(ids, y, oof), warnings=warnings, by_source=by_source(conn, ids, y, oof),
     )
 
 
@@ -312,6 +335,12 @@ def format_report(r: Report, describe=lambda pid: f"#{pid}") -> str:
         *[f"  {name:<14} {_f(auc)}" + ("   (no bios captured yet)" if auc is None else "")
           for name, auc in r.ablation.items()],
     ]
+    if r.by_source:
+        lines += ["", "By source (one pooled model; each app's profiles scored out-of-fold)"]
+        for st in r.by_source:
+            note = "   (too few of one answer for an AUC)" if st.auc is None else ""
+            lines.append(f"  {st.source:<8} n={st.n:<4} likes {st.likes / st.n:.0%}  AUC {_f(st.auc)}  "
+                         f"accuracy {_pct(st.accuracy)}{note}")
     lines += ["", "Does more rating help? (AUC when trained on n ratings, tested on the rest)"]
     if r.curve:
         lines += [f"  n={p.n_train:<4} {_f(p.auc_mean)}  ±{_f(p.auc_std)}" for p in r.curve]

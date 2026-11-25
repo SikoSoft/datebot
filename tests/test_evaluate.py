@@ -195,3 +195,14 @@ def test_run_errors_are_actionable(tmp_path):
 def test_verdict_bands():
     assert [evaluate.verdict(a) for a in (0.5, 0.65, 0.75, 0.85, 0.95, None)] == [
         "barely better than guessing", "weak", "decent", "good", "strong", "undefined"]
+
+
+def test_by_source_splits_the_pooled_report(seeded):
+    seeded.execute("UPDATE profiles SET source = 'badoo' WHERE id % 3 = 0")
+    seeded.commit()
+    r = evaluate.run(seeded, "fake")
+    assert {s.source for s in r.by_source} == {"manual", "badoo"}
+    assert sum(s.n for s in r.by_source) == r.n and sum(s.likes for s in r.by_source) == r.likes
+    assert r.by_source[0].n >= r.by_source[1].n
+    text = evaluate.format_report(r)
+    assert "By source" in text and "badoo" in text and "manual" in text
