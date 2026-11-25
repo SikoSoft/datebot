@@ -111,3 +111,9 @@ def test_saving_filters_from_the_panel_keeps_rules_it_cannot_edit(client):
     client.put("/api/filters", json={"reject_height_from_cm": 178, "field_keywords": {"politics": ["left"]}})
     r = client.put("/api/filters", json={"min_age": 21}).json()["filters"]
     assert r["min_age"] == 21 and r["reject_height_from_cm"] == 178 and r["field_keywords"] == {"politics": ["left"]}
+
+
+def test_insights_endpoint_and_page(client):
+    assert client.get("/insights").status_code == 200
+    body = client.get("/api/insights").json()
+    assert body["summary"]["rated"] == 0 and body["cards"] == []

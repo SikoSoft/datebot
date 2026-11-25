@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datebot insights</title>
+<style>
+  :root { --bg:#f6f5f3; --fg:#1d1d1f; --card:#fff; --muted:#6e6e73; --like:#1f9d55; --pass:#d64545; --line:#e3e1dd; --bar:#8b8b92; --accent:#3b6fd4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#f2f2f2; --card:#1e1e1e; --muted:#9a9aa0; --line:#2e2e2e; --bar:#6c6c74; --accent:#6f9bf0; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
+  header h1 { font-size:17px; margin:0; }
+  .ctl { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:13px; color:var(--muted); }
+  a.sm, button.sm, select, input[type=search] { padding:6px 10px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; cursor:pointer; font:13px system-ui, sans-serif; text-decoration:none; }
+  input[type=search] { cursor:text; width:150px; }
+  input[type=range] { vertical-align:middle; width:90px; }
+  main { max-width:1280px; margin:16px auto; padding:0 16px 60px; }
+  .tiles { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 16px; min-width:120px; }
+  .tile b { display:block; font-size:24px; font-variant-numeric:tabular-nums; }
+  .tile span { color:var(--muted); font-size:12px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:16px; }
+  .panel h2 { margin:0 0 2px; font-size:15px; }
+  .hint { color:var(--muted); font-size:12.5px; }
+  .hl { display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:6px 16px; margin-top:8px; }
+  .hl a { display:flex; justify-content:space-between; gap:8px; color:inherit; text-decoration:none; padding:4px 6px; border-radius:6px; font-size:13.5px; }
+  .hl a:hover { background:var(--bg); }
+  .hl .up { color:var(--like); } .hl .down { color:var(--pass); }
+  .jump { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .jump a { padding:3px 11px; border:1px solid var(--line); border-radius:99px; color:var(--fg); text-decoration:none; font-size:13px; background:var(--card); }
+  h2.section { margin:26px 0 8px; font-size:17px; scroll-margin-top:70px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(370px, 1fr)); gap:12px; align-items:start; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; scroll-margin-top:70px; }
+  .card.flash { outline:2px solid var(--accent); }
+  .card h3 { margin:0; font-size:14.5px; flex:1; }
+  .top { display:flex; align-items:flex-start; gap:8px; }
+  .x { border:0; background:transparent; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:2px 6px; border-radius:6px; }
+  .x:hover { background:var(--bg); color:var(--fg); }
+  .meta { color:var(--muted); font-size:12px; margin:2px 0 8px; }
+  .badge { display:inline-block; font-size:11px; padding:0 7px; border:1px solid var(--line); border-radius:99px; margin-left:6px; }
+  .row { display:grid; grid-template-columns:minmax(70px, 34%) 1fr 86px; gap:8px; align-items:center; padding:3px 0; font-size:13px; }
+  .row .lab { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row.dim { opacity:.55; }
+  .track { position:relative; height:14px; background:var(--bg); border-radius:4px; }
+  .fill { position:absolute; left:0; top:0; bottom:0; border-radius:4px; background:var(--bar); }
+  .row.hi .fill { background:var(--like); } .row.lo .fill { background:var(--pass); }
+  .ci { position:absolute; top:50%; height:2px; background:var(--fg); opacity:.55; transform:translateY(-50%); }
+  .base { position:absolute; top:-2px; bottom:-2px; width:0; border-left:2px dashed var(--fg); opacity:.45; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .num small { color:var(--muted); }
+  .empty { padding:40px 16px; text-align:center; color:var(--muted); }
+  .note { color:var(--muted); font-size:12px; margin-top:6px; }
+  .restore { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .restore button { font-size:12px; }
+  @media (max-width:520px) { .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Insights</h1>
+  <div class="ctl">
+    <label>App <select id="source"><option value="">all</option></select></label>
+    <label>Order <select id="order"><option value="default">default</option><option value="signal">strongest signal first</option></select></label>
+    <label>Min profiles/row <input type="range" id="minn" min="1" max="30" value="5"> <span id="minnv">5</span></label>
+    <input type="search" id="q" placeholder="Find a stat…">
+    <button class="sm" id="hiddenBtn">Hidden (0)</button>
+  </div>
+  <span><a class="sm" href="/review">Review</a> <a class="sm" href="/">← Rate profiles</a></span>
+</header>
+<main>
+  <div id="restorePanel" class="panel" style="display:none"></div>
+  <div class="tiles" id="tiles"></div>
+  <div class="panel" id="hlPanel">
+    <h2>Strongest signals</h2>
+    <div class="hint">Rows whose like rate differs clearly from your average (95% interval excludes it), at least 8 profiles each. With this many stats a few will be flukes: trust big n, and patterns that repeat across related stats. The app you swiped in is a common confounder, so compare with one app selected.</div>
+    <div class="hl" id="hl"></div>
+  </div>
+  <div class="jump" id="jump"></div>
+  <div id="cards"></div>
+  <div class="hint" style="margin-top:20px">Each bar is your like rate for profiles with that value, the thin line is its 95% interval, the dashed line is your overall average. Green/red = clearly above/below it. "guess" cards come from the CLIP model labelling photos: noisy, so verify with <code>datebot explain --examples</code>.</div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+const pct = x => Math.round(x * 100) + '%';
+const KEY = 'datebot.insights.hidden';
+let data = null;
+let hidden = new Set(JSON.parse(localStorage.getItem(KEY) || '[]'));
+const saveHidden = () => { localStorage.setItem(KEY, JSON.stringify([...hidden])); };
+
+async function load() {
+  const src = $('source').value;
+  const r = await fetch('/api/insights' + (src ? '?source=' + encodeURIComponent(src) : ''));
+  data = await r.json();
+  render();
+}
+
+const signal = c => Math.max(0, ...c.rows.filter(r => r.n >= +$('minn').value).map(r => Math.abs(r.z)));
+
+function tile(value, label) { const t = el('div', 'tile'); t.append(el('b', '', value), el('span', '', label)); return t; }
+
+function renderRow(r, base, scale) {
+  const cls = r.lo > base ? 'hi' : r.hi < base ? 'lo' : '';
+  const row = el('div', 'row ' + cls);
+  const lab = el('div', 'lab', r.label); lab.title = r.label;
+  const track = el('div', 'track');
+  const fill = el('div', 'fill'); fill.style.width = (r.rate / scale * 100) + '%';
+  const ci = el('div', 'ci'); ci.style.left = (r.lo / scale * 100) + '%'; ci.style.width = ((r.hi - r.lo) / scale * 100) + '%';
+  const b = el('div', 'base'); b.style.left = (base / scale * 100) + '%';
+  track.append(fill, ci, b);
+  const arrow = cls === 'hi' ? '▲ ' : cls === 'lo' ? '▼ ' : '';
+  const num = el('div', 'num', arrow + pct(r.rate) + ' '); num.append(el('small', '', 'n=' + r.n));
+  row.title = `${r.label}: ${r.likes} liked of ${r.n} (${pct(r.lo)}–${pct(r.hi)}), average is ${pct(base)}`;
+  row.append(lab, track, num);
+  return row;
+}
+
+function renderCard(c, base) {
+  const minn = +$('minn').value;
+  const rows = c.rows.filter(r => r.n >= minn);
+  if (!rows.length) return null;
+  const card = el('div', 'card'); card.id = c.id;
+  const top = el('div', 'top');
+  const h = el('h3', '', c.title);
+  if (c.visual) h.append(el('span', 'badge', 'guess'));
+  const x = el('button', 'x', '✕'); x.title = 'Hide this stat'; x.setAttribute('aria-label', 'Hide ' + c.title);
+  x.onclick = () => { hidden.add(c.id); saveHidden(); render(); };
+  top.append(h, x);
+  card.append(top, el('div', 'meta', `${c.covered} of ${c.total} rated profiles`));
+  const scale = Math.max(0.2, Math.min(1, Math.ceil(Math.max(...rows.map(r => r.hi)) * 10) / 10));
+  rows.forEach(r => card.append(renderRow(r, base, scale)));
+  if (c.note) card.append(el('div', 'note', c.note));
+  return card;
+}
+
+function render() {
+  const s = data.summary, base = s.baseline;
+  $('minnv').textContent = $('minn').value;
+  const q = $('q').value.trim().toLowerCase();
+
+  // source options (kept across reloads)
+  if ($('source').options.length === 1 && !s.source) {
+    Object.keys(s.sources).sort().forEach(k => { const o = el('option', '', `${k} (${s.sources[k]})`); o.value = k; $('source').append(o); });
+  }
+
+  const t = $('tiles'); t.replaceChildren(tile(s.rated, 'rated profiles'), tile(s.likes, 'likes'), tile(s.passes, 'passes'), tile(pct(base), 'like rate'));
+  if (s.visual_note) { const n = el('div', 'tile'); n.append(el('span', '', s.visual_note)); t.append(n); }
+
+  const byId = Object.fromEntries(data.cards.map(c => [c.id, c]));
+  const hl = $('hl'); hl.replaceChildren();
+  data.highlights.filter(h => !hidden.has(h.card)).forEach(h => {
+    const a = el('a'); a.href = '#' + h.card;
+    a.onclick = e => { e.preventDefault(); const c = $(h.card); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1500); } };
+    a.append(el('span', '', `${h.title}: ${h.label}${h.visual ? ' (guess)' : ''}`));
+    a.append(el('span', h.rate > base ? 'up' : 'down', `${h.rate > base ? '▲' : '▼'} ${pct(h.rate)} · n=${h.n}`));
+    hl.append(a);
+  });
+  $('hlPanel').style.display = hl.children.length ? '' : 'none';
+
+  const sections = [...new Set(data.cards.map(c => c.section))];
+  const cards = $('cards'); cards.replaceChildren(); $('jump').replaceChildren();
+  let shown = 0;
+  sections.forEach(sec => {
+    let list = data.cards.filter(c => c.section === sec && !hidden.has(c.id) && (!q || (c.title + ' ' + c.rows.map(r => r.label).join(' ')).toLowerCase().includes(q)));
+    if ($('order').value === 'signal') list = list.slice().sort((a, b) => signal(b) - signal(a));
+    const els = list.map(c => renderCard(c, base)).filter(Boolean);
+    if (!els.length) return;
+    const h = el('h2', 'section', sec); h.id = 'sec-' + sec;
+    const g = el('div', 'grid'); g.append(...els);
+    cards.append(h, g);
+    const j = el('a', '', sec); j.href = '#sec-' + sec; $('jump').append(j);
+    shown += els.length;
+  });
+  if (!s.rated) cards.append(el('div', 'empty', 'No ratings yet: rate some profiles and come back.'));
+  else if (!shown) cards.append(el('div', 'empty', 'Nothing to show with these settings.'));
+
+  $('hiddenBtn').textContent = `Hidden (${hidden.size})`;
+  const rp = $('restorePanel');
+  rp.replaceChildren();
+  if (rp.dataset.open === '1' && hidden.size) {
+    rp.style.display = '';
+    rp.append(el('h2', '', 'Hidden stats'), el('div', 'hint', 'Click one to bring it back.'));
+    const wrap = el('div', 'restore');
+    [...hidden].forEach(id => {
+      const b = el('button', 'sm', byId[id] ? byId[id].title : id);
+      b.onclick = () => { hidden.delete(id); saveHidden(); render(); };
+      wrap.append(b);
+    });
+    const all = el('button', 'sm', 'Restore all'); all.onclick = () => { hidden.clear(); saveHidden(); rp.dataset.open = '0'; render(); };
+    wrap.append(all);
+    rp.append(wrap);
+  } else { rp.style.display = 'none'; if (!hidden.size) rp.dataset.open = '0'; }
+}
+
+$('hiddenBtn').onclick = () => { const rp = $('restorePanel'); rp.dataset.open = rp.dataset.open === '1' ? '0' : '1'; render(); };
+['order', 'minn', 'q'].forEach(id => $(id).addEventListener('input', () => data && render()));
+$('source').addEventListener('change', load);
+load();
+</script>
+</body>
+</html>

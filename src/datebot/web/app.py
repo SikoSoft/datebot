@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from datebot import config, db, filters, ingest, model
+from datebot import config, db, filters, ingest, insights, model
 
 STATIC = Path(__file__).parent / "static"
 
@@ -100,6 +100,16 @@ def create_app() -> FastAPI:
     @app.get("/review")
     def review_page():
         return FileResponse(STATIC / "review.html")
+
+    @app.get("/api/insights")
+    def get_insights(source: str | None = None):
+        """Like-rate statistics per attribute (profile data and CLIP visual guesses); see insights.py."""
+        with db.session() as conn:
+            return insights.build(conn, source or None)
+
+    @app.get("/insights")
+    def insights_page():
+        return FileResponse(STATIC / "insights.html")
 
     @app.get("/api/filters")
     def get_filters():
