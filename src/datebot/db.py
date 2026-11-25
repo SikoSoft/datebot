@@ -72,6 +72,13 @@ CREATE INDEX IF NOT EXISTS idx_photos_profile ON photos(profile_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_profile ON interactions(profile_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_session ON interactions(session_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_profile ON ratings(profile_id);
+
+-- Your own verdict on whether a profile is a scam/fake, overriding the heuristic in fake.py (insights only).
+CREATE TABLE IF NOT EXISTS fake_marks (
+    profile_id INTEGER PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+    is_fake INTEGER NOT NULL,          -- 1 = fake, 0 = definitely real
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -102,6 +109,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if col not in cols:
             conn.execute(f"ALTER TABLE profiles ADD COLUMN {col} {ddl}")
     conn.commit()
+
+
+def set_fake_mark(conn: sqlite3.Connection, profile_id: int, is_fake: bool | None) -> None:
+    """Record your verdict (True = fake, False = real); None clears it so the heuristic decides again."""
+    if is_fake is None:
+        conn.execute("DELETE FROM fake_marks WHERE profile_id = ?", (profile_id,))
+    else:
+        conn.execute("INSERT INTO fake_marks (profile_id, is_fake) VALUES (?, ?) "
+                     "ON CONFLICT(profile_id) DO UPDATE SET is_fake = excluded.is_fake, created_at = CURRENT_TIMESTAMP",
+                     (profile_id, int(is_fake)))
+
+
+def fake_marks(conn: sqlite3.Connection) -> dict[int, bool]:
+    return {r["profile_id"]: bool(r["is_fake"]) for r in conn.execute("SELECT profile_id, is_fake FROM fake_marks")}
 
 
 @contextmanager

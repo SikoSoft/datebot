@@ -108,3 +108,20 @@ def test_fake_threshold_excludes_from_stats(tmp_path):
     assert r["summary"]["rated"] == 40 - (f["excluded"] - 1)
     assert any(e["id"] == scam and e["liked"] for e in f["examples"])
     assert insights.build(conn, visual=None, fake_threshold=100)["summary"]["rated"] == 41
+
+
+def test_manual_fake_marks_override_heuristic(tmp_path):
+    conn = make_db(tmp_path)
+    scam = db.add_profile(conn, "tinder", "scam", name="S", age=30, bio=None, extra={})
+    db.add_rating(conn, scam, liked=True)
+    real = db.add_profile(conn, "tinder", "real", name="R", age=30, bio="Hiking, dogs and sourdough on weekends", extra={})
+    db.add_rating(conn, real, liked=True)
+    db.set_fake_mark(conn, real, True)   # you say fake: excluded although the heuristic scores 0
+    db.set_fake_mark(conn, scam, False)  # you say real: kept although the heuristic flags it
+    r = insights.build(conn, visual=None, fake_threshold=25)
+    ids = {e["id"] for e in r["summary"]["fake"]["examples"]}
+    assert real in ids and scam not in ids
+    assert next(e for e in r["summary"]["fake"]["examples"] if e["id"] == real)["manual"] is True
+    assert insights.build(conn, visual=None)["summary"]["rated"] == 42  # slider off keeps everyone
+    db.set_fake_mark(conn, real, None)
+    assert db.fake_marks(conn) == {scam: False}

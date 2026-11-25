@@ -230,13 +230,16 @@ def build(conn: sqlite3.Connection, source: str | None = None,
     photo_counts = {r["profile_id"]: r["c"] for r in conn.execute("SELECT profile_id, COUNT(*) c FROM photos GROUP BY profile_id")}
     excluded = []
     if fake_threshold is not None:
+        marks = db.fake_marks(conn)  # your verdict beats the heuristic, both ways
         for pid in list(profiles):
             fs = fake.score(profiles[pid], photo_counts.get(pid, 0), labels.get(pid))
-            if fs.score >= fake_threshold:
+            manual = marks.get(pid)
+            if manual is True or (manual is None and fs.score >= fake_threshold):
                 excluded.append({"id": pid, "name": profiles[pid].name, "source": profiles[pid].source,
-                                 "score": fs.score, "liked": liked[pid], "reasons": fs.reasons})
+                                 "score": 100 if manual else fs.score, "liked": liked[pid],
+                                 "reasons": ["marked fake by you"] if manual else fs.reasons, "manual": bool(manual)})
                 del profiles[pid], liked[pid], when[pid]
-    excluded.sort(key=lambda e: -e["score"])
+    excluded.sort(key=lambda e: (not e["manual"], -e["score"]))
     n = len(profiles)
     likes = sum(liked.values())
     baseline = likes / n if n else 0.0
