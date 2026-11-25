@@ -13,21 +13,28 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from datebot import config, db
 
 MIN_PER_CLASS = 3  # need at least this many likes and passes to train
-FEATURE_VERSION = 2  # bump when featurize() changes; older saved models are ignored and must be retrained
+FEATURE_VERSION = 3  # bump when featurize() changes; older saved models are ignored and must be retrained
 
 
 def featurize(embeddings: np.ndarray, text_embedding: np.ndarray | None = None) -> np.ndarray:
-    """Collapse a profile into one feature vector: [photo mean, photo max, bio text, has_text].
+    """Collapse a profile into one feature vector:
+    [photo mean, photo max, lead photo, text mean, text max, has_text].
 
-    Mean captures the overall look; max keeps standout photos from being averaged away. The text block
-    is zeros (with has_text = 0) when the profile has no bio, so photo-only profiles still work.
+    Mean captures the overall look; max keeps standout photos from being averaged away; the lead
+    (first) photo gets its own block so the model can learn how much the photo you see first matters
+    versus the rest. `text_embedding` is the stored [mean, max] of the profile's text lines. The text
+    blocks are zeros (with has_text = 0) when there is no text, so photo-only profiles still work.
     """
     if embeddings.size == 0:
         raise ValueError("profile has no embeddings")
     dim = embeddings.shape[1]
-    text = np.zeros(dim, dtype=np.float32) if text_embedding is None else np.asarray(text_embedding, dtype=np.float32)
-    has_text = np.array([0.0 if text_embedding is None else 1.0], dtype=np.float32)
-    return np.concatenate([embeddings.mean(axis=0), embeddings.max(axis=0), text, has_text])
+    if text_embedding is None:
+        text, has_text = np.zeros(2 * dim, dtype=np.float32), 0.0
+    else:
+        text, has_text = np.asarray(text_embedding, dtype=np.float32), 1.0
+        if text.shape != (2 * dim,):
+            raise ValueError(f"text embedding has {text.shape} values, expected {2 * dim}")
+    return np.concatenate([embeddings.mean(axis=0), embeddings.max(axis=0), embeddings[0], text, [has_text]]).astype(np.float32)
 
 
 @dataclass

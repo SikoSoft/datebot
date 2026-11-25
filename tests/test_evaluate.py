@@ -5,7 +5,7 @@ from datebot import evaluate, model
 
 
 def make_data(n=60, signal=1.0, d=8, seed=0, text_signal=0.0, text_frac=1.0):
-    """Features in the real layout [mean(d), max(d), text(d), has_text(1)] with a controllable signal."""
+    """Features in the real layout [mean(d), max(d), lead(d), text mean(d), text max(d), has_text(1)] with a controllable signal."""
     rng = np.random.default_rng(seed)
     y = np.array([0, 1] * (n // 2))
     rng.shuffle(y)
@@ -14,7 +14,7 @@ def make_data(n=60, signal=1.0, d=8, seed=0, text_signal=0.0, text_frac=1.0):
     X = []
     for i in range(n):
         has = rng.random() < text_frac
-        text = rng.normal(0, 1, d) + text_signal * sign[i] if has else None
+        text = rng.normal(0, 1, 2 * d) + text_signal * sign[i] if has else None
         X.append(model.featurize(np.stack([photo[i], photo[i]]), text))
     return np.stack(X), y
 
@@ -142,7 +142,7 @@ def seed_db(path, n):
             if conn.execute("SELECT profile_id FROM photos WHERE id=?", (photo_id,)).fetchone()[0] == pid:
                 db.set_embedding(conn, photo_id, center + rng.normal(0, 1.5, 8), "fake")
         if pid % 3 == 1:
-            db.set_text_embedding(conn, pid, center + rng.normal(0, 1.5, 8), "fake")
+            db.set_text_embedding(conn, pid, np.tile(center, 2) + rng.normal(0, 1.5, 16), "fake")
         db.add_rating(conn, pid, liked)
     return conn
 

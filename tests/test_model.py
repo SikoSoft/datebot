@@ -72,7 +72,7 @@ def add_with_text(conn, text_vec, rng, liked):
     pid = add(conn, np.zeros(8), rng, liked)
     conn.execute("UPDATE photos SET embedding = ? WHERE profile_id = ?",
                  (rng.normal(0, 1, 8).astype(np.float32).tobytes(), pid))
-    db.set_text_embedding(conn, pid, text_vec + rng.normal(0, 0.2, 8), EMBED)
+    db.set_text_embedding(conn, pid, np.tile(text_vec, 2) + rng.normal(0, 0.2, 16), EMBED)
     return pid
 
 
@@ -102,3 +102,30 @@ def test_stale_model_is_ignored(conn):
     import joblib
     joblib.dump(trained, model._path("old"))
     assert model.load("old") is None
+
+
+def test_featurize_layout_has_a_lead_photo_block():
+    photos = np.array([[1.0, 0.0], [0.0, 1.0], [0.0, 3.0]], dtype=np.float32)
+    f = model.featurize(photos)
+    assert f.shape == (5 * 2 + 1,)
+    assert list(f[0:2]) == pytest.approx([1 / 3, 4 / 3])  # mean
+    assert list(f[2:4]) == [1.0, 3.0]                    # max
+    assert list(f[4:6]) == [1.0, 0.0]                    # lead photo = first by position
+    assert not f[6:].any()                               # no text: zeros and has_text = 0
+
+
+def test_featurize_rejects_text_of_the_wrong_size():
+    with pytest.raises(ValueError):
+        model.featurize(np.ones((2, 4), dtype=np.float32), np.ones(4, dtype=np.float32))
+
+
+def test_lead_photo_is_what_the_model_learns_when_other_photos_are_noise(conn):
+    rng = np.random.default_rng(3)
+    for liked in (True, False) * 15:
+        pid = db.add_profile(conn, "manual", ["a.jpg", "b.jpg", "c.jpg"])
+        lead = (np.ones(8) if liked else -np.ones(8)) + rng.normal(0, 0.2, 8)
+        for photo_id, vec in zip([r["id"] for r in conn.execute("SELECT id FROM photos WHERE profile_id = ? ORDER BY position", (pid,))],
+                                 [lead, rng.normal(0, 1, 8), rng.normal(0, 1, 8)]):
+            db.set_embedding(conn, photo_id, vec, EMBED)
+        db.add_rating(conn, pid, liked)
+    assert model.train(conn, EMBED).cv_accuracy > 0.9

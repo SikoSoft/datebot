@@ -278,32 +278,49 @@ def _strings(value) -> list[str]:
 TEXT_EXTRA_KEYS = ("prompts", "interests", "descriptors")
 
 
-def profile_text(profile: Profile) -> str:
-    """Bio plus prompt answers, interests and descriptors from `extra`, as one string ('' if none)."""
+def profile_text_parts(profile: Profile) -> list[str]:
+    """The bio, then each prompt answer / interest / descriptor from `extra`, as separate strings.
+
+    Kept separate (not joined) so each is embedded on its own: CLIP truncates at 77 tokens, which a
+    prompt-heavy profile (Hinge) would otherwise blow through."""
     parts = [profile.bio or ""] + [s for k in TEXT_EXTRA_KEYS for s in _strings(profile.extra.get(k))]
-    return " ".join(p.strip() for p in parts if p.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def profile_text(profile: Profile) -> str:
+    """All of the profile's text as one string ('' if none); used for keyword filters."""
+    return " ".join(profile_text_parts(profile))
+
+
+# Bump when the stored text vector's layout changes; it is part of the stored model key, so profiles
+# embedded under an older layout are re-embedded from their stored text automatically.
+TEXT_LAYOUT = "lines-v1"  # per-line CLIP embeddings pooled to [mean, max]
+
+
+def _text_key(model: str) -> str:
+    return f"{model}|{TEXT_LAYOUT}"
 
 
 def set_text_embedding(conn: sqlite3.Connection, profile_id: int, vec: np.ndarray, model: str) -> None:
     conn.execute(
         "UPDATE profiles SET text_embedding = ?, text_embed_model = ? WHERE id = ?",
-        (np.asarray(vec, dtype=np.float32).tobytes(), model, profile_id),
+        (np.asarray(vec, dtype=np.float32).tobytes(), _text_key(model), profile_id),
     )
 
 
-def profiles_missing_text_embeddings(conn: sqlite3.Connection, model: str) -> list[tuple[int, str]]:
-    """(profile_id, text) for profiles that have text but no embedding from `model`."""
+def profiles_missing_text_embeddings(conn: sqlite3.Connection, model: str) -> list[tuple[int, list[str]]]:
+    """(profile_id, text parts) for profiles that have text but no up-to-date embedding from `model`."""
     out = []
-    for r in conn.execute("SELECT * FROM profiles WHERE text_embedding IS NULL OR text_embed_model != ?", (model,)):
-        text = profile_text(_profile(r))
-        if text:
-            out.append((r["id"], text))
+    for r in conn.execute("SELECT * FROM profiles WHERE text_embedding IS NULL OR text_embed_model != ?", (_text_key(model),)):
+        parts = profile_text_parts(_profile(r))
+        if parts:
+            out.append((r["id"], parts))
     return out
 
 
 def text_embedding(conn: sqlite3.Connection, profile_id: int, model: str) -> np.ndarray | None:
     row = conn.execute(
         "SELECT text_embedding FROM profiles WHERE id = ? AND text_embed_model = ? AND text_embedding IS NOT NULL",
-        (profile_id, model),
+        (profile_id, _text_key(model)),
     ).fetchone()
     return None if row is None else np.frombuffer(row["text_embedding"], dtype=np.float32)

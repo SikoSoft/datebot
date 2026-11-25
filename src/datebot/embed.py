@@ -56,14 +56,24 @@ def embed_texts(texts: list[str], batch_size: int = 32) -> np.ndarray:
     return np.concatenate(out) if out else np.empty((0, 0), dtype=np.float32)
 
 
+def pool_text(vecs: np.ndarray) -> np.ndarray:
+    """Pool one profile's per-line text embeddings (n_lines, dim) into [mean, max] (2 * dim).
+
+    Mean is the overall tone; max keeps one standout prompt from being averaged away."""
+    return np.concatenate([vecs.mean(axis=0), vecs.max(axis=0)]).astype(np.float32)
+
+
 def embed_pending(conn: sqlite3.Connection) -> int:
     """Embed every photo and profile text that lacks an embedding for the current model.
 
     Returns the number of photos embedded (texts are embedded too, but not counted)."""
     texts = db.profiles_missing_text_embeddings(conn, EMBED_ID)
     if texts:
-        for (pid, _), vec in zip(texts, embed_texts([t for _, t in texts])):
-            db.set_text_embedding(conn, pid, vec, EMBED_ID)
+        lines = embed_texts([line for _, parts in texts for line in parts])  # every line of every profile, one batch
+        start = 0
+        for pid, parts in texts:
+            db.set_text_embedding(conn, pid, pool_text(lines[start : start + len(parts)]), EMBED_ID)
+            start += len(parts)
     pending = db.photos_missing_embeddings(conn, EMBED_ID)
     if not pending:
         return 0

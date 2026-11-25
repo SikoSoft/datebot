@@ -63,12 +63,12 @@ def headline(y: np.ndarray, oof: np.ndarray) -> Headline:
 
 
 def feature_blocks(X: np.ndarray) -> dict[str, np.ndarray | None]:
-    """Split features laid out as [photo mean, photo max, text, has_text] into ablation sets.
+    """Split features laid out as [photo mean, photo max, lead photo, text mean, text max, has_text] into ablation sets.
 
     'text' is None when no rated profile has any text, since that comparison would be meaningless.
     """
-    d = (X.shape[1] - 1) // 3
-    photos, text_cols = X[:, : 2 * d], X[:, 2 * d :]
+    d = (X.shape[1] - 1) // 5
+    photos, text_cols = X[:, : 3 * d], X[:, 3 * d :]
     has_text = X[:, -1] > 0
     return {"photos only": photos, "text only": text_cols if has_text.any() else None, "photos + text": X}
 

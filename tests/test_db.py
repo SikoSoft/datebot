@@ -58,6 +58,7 @@ def test_undo_last_rating(conn):
 def test_profile_text_joins_bio_and_prompts(conn):
     pid = db.add_profile(conn, "hinge", ["a.jpg"], bio=" Hi ", extra={"prompts": [{"q": "Q", "a": "I like tea"}]})
     assert db.profile_text(db.get_profile(conn, pid)) == "Hi Q I like tea"
+    assert db.profile_text_parts(db.get_profile(conn, pid)) == ["Hi", "Q", "I like tea"]
     empty = db.add_profile(conn, "manual", ["b.jpg"])
     assert db.profile_text(db.get_profile(conn, empty)) == ""
 
@@ -65,10 +66,10 @@ def test_profile_text_joins_bio_and_prompts(conn):
 def test_text_embedding_roundtrip_skips_empty_text(conn):
     with_text = db.add_profile(conn, "manual", ["a.jpg"], bio="loves hiking")
     db.add_profile(conn, "manual", ["b.jpg"])  # no text -> never needs an embedding
-    assert db.profiles_missing_text_embeddings(conn, "m1") == [(with_text, "loves hiking")]
+    assert db.profiles_missing_text_embeddings(conn, "m1") == [(with_text, ["loves hiking"])]
     db.set_text_embedding(conn, with_text, np.arange(4, dtype=np.float32), "m1")
     assert db.profiles_missing_text_embeddings(conn, "m1") == []
-    assert db.profiles_missing_text_embeddings(conn, "m2") == [(with_text, "loves hiking")]
+    assert db.profiles_missing_text_embeddings(conn, "m2") == [(with_text, ["loves hiking"])]
     assert list(db.text_embedding(conn, with_text, "m1")) == [0, 1, 2, 3]
     assert db.text_embedding(conn, with_text, "m2") is None
 
@@ -85,7 +86,7 @@ def test_migrates_database_from_before_text_columns(tmp_path):
     old.close()
     conn = db.connect(path)
     assert db.get_profile(conn, 1).bio == "old row"
-    assert db.profiles_missing_text_embeddings(conn, "m") == [(1, "old row")]
+    assert db.profiles_missing_text_embeddings(conn, "m") == [(1, ["old row"])]
 
 
 def test_find_profile_id(conn):
