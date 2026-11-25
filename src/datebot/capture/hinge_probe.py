@@ -77,7 +77,7 @@ def summarize(d: Path | None = None, top: int = 25) -> str:
         u = urlparse(x["url"])
         hosts[u.hostname] += 1
         size = len(x["response_body"] or "")
-        if size > biggest.get(u.hostname, (0, ""))[0]:
+        if size > biggest.get(u.hostname, (-1, ""))[0]:
             biggest[u.hostname] = (size, f"{x['method']} {u.path}")
     lines = [f"{sum(hosts.values())} exchange(s) in {d}", "Readable hosts (count, largest response):"]
     lines += [f"  {n:4d}  {biggest[h][0]:8d}B  {h}  {biggest[h][1]}" for h, n in hosts.most_common(top)]
