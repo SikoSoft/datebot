@@ -118,6 +118,17 @@ def stats() -> None:
                f"{auto} auto-swiped, {unrated} unrated")
 
 
+@app.command()
+def ui(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Start the local rating UI (needs the `ui` extra: uv sync --extra ui)."""
+    import uvicorn
+
+    from datebot.web.app import create_app
+
+    typer.echo(f"Rating UI at http://{host}:{port}")
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+
+
 filters_app = typer.Typer(help="Hard deal-breakers applied before the model.", no_args_is_help=True)
 app.add_typer(filters_app, name="filters")
 
