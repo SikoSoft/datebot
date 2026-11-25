@@ -65,3 +65,36 @@ def test_blur_time_is_excluded_from_attention():
 def test_events_outside_the_window_are_ignored():
     f = behavior.derive(raw([{"t": -5000, "k": "m", "x": 0, "y": 0}], start=0))
     assert "n_events" not in f
+
+
+def click(t, **tg):
+    return {"t": t, "k": "c", "x": 1, "y": 1, "tg": tg}
+
+
+def test_target_labels():
+    assert behavior.target_label(None) == "unknown"
+    assert behavior.target_label({"tag": "div"}) == "other"
+    assert behavior.target_label({"al": "Next Photo"}) == "gallery_next"
+    assert behavior.target_label({"al": "previous photo"}) == "gallery_prev"
+    assert behavior.target_label({"tx": "open profile"}) == "open_profile"
+    assert behavior.target_label({"tx": "like"}) == "like"
+    assert behavior.target_label({"tx": "nope"}) == "pass"
+    assert behavior.target_label({"al": "dislike"}) == "pass"
+
+
+def test_click_counts_and_profile_open_time():
+    f = behavior.derive(raw([click(1000, al="open profile"), click(2000, al="next photo"), click(3000, al="next photo"),
+                             click(4000, al="previous photo"), click(9000, tx="like")]))
+    assert (f["n_clicks"], f["n_gallery_next"], f["n_gallery_prev"], f["n_open_profile"]) == (5, 2, 1, 1)
+    assert f["open_profile_ms"] == 1000 and f["n_other_clicks"] == 0
+
+
+def test_navigation_clicks_are_not_the_swipe_action():
+    f = behavior.derive(raw([{"t": 8000, "k": "kd", "key": "ArrowRight"}, click(9000, al="next photo")]))
+    assert f["swipe_by_key"] == 1
+    assert "click_rx" not in f
+
+
+def test_clicks_without_a_descriptor_still_count_and_can_be_the_action():
+    f = behavior.derive(raw([{"t": 9000, "k": "c", "x": 5, "y": 5, "rx": 0.4, "ry": 0.6}]))
+    assert f["n_clicks"] == 1 and f["n_other_clicks"] == 1 and f["swipe_by_key"] == 0 and f["click_rx"] == 0.4

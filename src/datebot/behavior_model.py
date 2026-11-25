@@ -34,7 +34,8 @@ BREAK_MS = 5 * 60_000
 STAT_FEATURES = (
     "dwell_ms", "attention_ms", "first_input_ms", "n_moves", "path_px", "mean_speed", "max_speed", "end_speed_ratio",
     "peak_decel", "straightness", "jitter", "reversals", "pauses", "longest_pause_ms", "pre_action_pause_ms",
-    "wheel_up", "wheel_down", "scroll_reversals", "key_hold_ms",
+    "wheel_up", "wheel_down", "scroll_reversals", "key_hold_ms", "n_clicks", "n_gallery_next", "n_gallery_prev",
+    "n_open_profile", "open_profile_ms",
 )
 
 

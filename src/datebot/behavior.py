@@ -10,8 +10,8 @@ raw = {
   "basis": "prev_swipe" | "ready"          how `start` was chosen (an inferred dwell, not a measured one),
   "events": [ {"t": epoch ms, "k": kind, ...} ]   browser only; empty for network-timing-only sources (Hinge)
 }
-event kinds: m move {x,y} | w wheel {dy} | kd/ku key down/up {key} | c click {x,y,rx,ry} (rx,ry: 0..1 inside the
-target element) | f focus {v: 1 focused, 0 blurred}.
+event kinds: m move {x,y} | w wheel {dy} | kd/ku key down/up {key} | c click {x,y,rx,ry,tg} (rx,ry: 0..1 inside the
+target element; tg: descriptor of it, classified by `target_label`) | f focus {v: 1 focused, 0 blurred}.
 
 Hinge runs on a phone behind a proxy, so it only has timing; touch, scroll and pointer kinematics exist only for
 browser sources. Features that need events are simply absent otherwise (never zero-filled: absent means unmeasured).
@@ -20,15 +20,37 @@ from __future__ import annotations
 
 import math
 
-FEATURE_VERSION = 1
+FEATURE_VERSION = 2
 PAUSE_MS = 400        # an input gap at least this long counts as a pause
 HESITATE_MS = 1000    # a pause this long followed by more input before the swipe counts as hesitation
 APPROACH_MS = 150     # window before the swipe used for the approach (deceleration) features
+# Click targets are classified from the stored descriptor (event["tg"]), so the rules can change and old
+# interactions be re-derived. These keyword rules are GUESSES at Tinder/Badoo's labels, not verified against the
+# live sites: a click that matches nothing is "other" (descriptor kept), and one without a descriptor is "unknown".
+TARGET_RULES = (
+    ("pass", ("dislike", "nope", "pass", "reject")),
+    ("like", ("like", "vote-yes", "heart")),
+    ("gallery_prev", ("previous", "prev", "back photo", "left photo")),
+    ("gallery_next", ("next", "forward photo", "right photo")),
+    ("open_profile", ("open profile", "profile", "info", "details", "expand", "see more", "more about")),
+)
+NAV_LABELS = ("gallery_prev", "gallery_next", "open_profile")
 ARROWS = ("ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown")
 
 
 def _mean(xs: list[float]) -> float | None:
     return sum(xs) / len(xs) if xs else None
+
+
+def target_label(tg: dict | None) -> str:
+    """Classify a click's stored descriptor: pass | like | gallery_prev | gallery_next | open_profile | other | unknown."""
+    if not isinstance(tg, dict):
+        return "unknown"
+    hay = " ".join(str(tg.get(k, "")) for k in ("al", "ti", "id", "qa", "dt", "cl", "tx")).lower()
+    for label, words in TARGET_RULES:
+        if any(w in hay for w in words):
+            return label
+    return "other"
 
 
 def _pointer(moves: list[dict], decided: float) -> dict:
@@ -105,7 +127,19 @@ def derive(raw: dict) -> dict:
     if holds:
         f["key_hold_ms"] = round(_mean(holds), 1)
 
-    actions = [e for e in events if e["k"] == "c" or (e["k"] == "kd" and e.get("key") in ARROWS)]
+    clicks = [e for e in events if e["k"] == "c"]
+    if clicks:
+        labels = [target_label(e.get("tg")) for e in clicks]
+        f["n_clicks"] = len(clicks)
+        f["n_gallery_next"] = labels.count("gallery_next")
+        f["n_gallery_prev"] = labels.count("gallery_prev")
+        f["n_open_profile"] = labels.count("open_profile")
+        f["n_other_clicks"] = sum(l in ("other", "unknown") for l in labels)
+        opened = [e for e, l in zip(clicks, labels) if l == "open_profile"]
+        if opened:
+            f["open_profile_ms"] = max(0, round(opened[0]["t"] - start))
+    nav = {id(e) for e in clicks if target_label(e.get("tg")) in NAV_LABELS}  # browsing the profile, not deciding
+    actions = [e for e in events if id(e) not in nav and (e["k"] == "c" or (e["k"] == "kd" and e.get("key") in ARROWS))]
     if actions:
         act = actions[-1]
         f["swipe_by_key"] = int(act["k"] == "kd")
