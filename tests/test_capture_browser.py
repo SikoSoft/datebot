@@ -133,3 +133,29 @@ def test_pointer_telemetry_reaches_the_interaction_for_a_real_click(fake_tinder,
     assert f["n_moves"] >= 17 and f["swipe_by_key"] == 0 and abs(f["click_rx"] - 0.5) < 0.1
     assert "n_keys" not in f
     assert "secret" not in json.dumps(db.raw_of(row))
+
+
+@pytest.mark.slow
+def test_click_descriptor_reaches_the_events_without_reading_profile_text():
+    from datebot.capture import telemetry
+
+    page_html = """<div id=bio style="position:fixed;left:0;top:0;width:100px;height:40px">Anna loves hiking</div>
+<button aria-label="Next Photo" style="position:fixed;left:200px;top:0;width:60px;height:40px"></button>
+<button style="position:fixed;left:300px;top:0;width:60px;height:40px">Like</button>"""
+    events = telemetry.EventBuffer()
+    with sync_playwright() as pw:
+        chrome = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = chrome.new_context()
+        telemetry.install(ctx, events)
+        page = ctx.new_page()
+        page.route("**/", lambda route: route.fulfill(body=page_html, content_type="text/html"))
+        page.goto("http://127.0.0.1:1/")
+        page.wait_for_timeout(300)
+        for x in (50, 230, 330):
+            page.mouse.click(x, 20)
+        page.wait_for_timeout(600)
+        chrome.close()
+    clicks = [e for e in events.drain(1e18) if e["k"] == "c"]
+    from datebot import behavior
+    assert [behavior.target_label(c["tg"]) for c in clicks] == ["other", "gallery_next", "like"]
+    assert "anna" not in json.dumps(clicks).lower()

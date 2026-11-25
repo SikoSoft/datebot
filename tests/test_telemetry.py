@@ -28,3 +28,9 @@ def test_buffer_is_bounded():
     b.add(batch(*({"t": i, "k": "m", "x": 0, "y": 0} for i in range(MAX_EVENTS + 50))))
     got = b.drain(10**9)
     assert len(got) == MAX_EVENTS and got[0]["t"] == 50
+
+
+def test_click_descriptor_is_interface_vocabulary_not_profile_text():
+    from datebot.capture.telemetry import INIT_SCRIPT
+    assert "describe" in INIT_SCRIPT and "ev.tg" in INIT_SCRIPT
+    assert INIT_SCRIPT.count("textContent") == 1  # only for short buttons

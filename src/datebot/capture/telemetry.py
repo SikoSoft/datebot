@@ -1,9 +1,11 @@
 """Browser input telemetry for behaviour interactions (see behavior.py).
 
 A small passive script is injected into the page you drive: it only listens (mouse position, wheel, arrow keys,
-clicks with their position inside the clicked element, window focus) and hands batches to this process. It
+clicks with their position inside the clicked element and a short descriptor of it, window focus) and hands batches to this process. It
 sends nothing to the site. Two limits worth knowing:
   * Only the *names* of arrow keys are recorded; every other keystroke is ignored, so typed messages never leave the page.
+  * A click's descriptor (`tg`) holds interface vocabulary only (tag, role, aria-label, title, test ids, class tokens,
+    and the text of buttons shorter than 25 characters); behavior.target_label turns it into gallery/open-profile/like/pass.
   * The script is ordinary page JavaScript and exposes a function named __datebot_events, so the page could see it.
 Events carry epoch-millisecond timestamps (performance.timeOrigin + performance.now()), the same clock as time.time().
 """
@@ -25,6 +27,25 @@ INIT_SCRIPT = """
     if (!q.length || typeof window.__datebot_events !== 'function') return;
     try { window.__datebot_events(JSON.stringify(q.splice(0))); } catch (_) {}
   };
+  const clip = (v, n) => (typeof v === 'string' ? v.trim().toLowerCase().replace(/\\s+/g, ' ').slice(0, n) : '');
+  // What was clicked, as UI vocabulary only: tag, role, aria-label/title, test ids, a few class tokens and the
+  // text of short buttons ("Like"). Never the text of anything else, so bios and names are not read.
+  const describe = t => {
+    const c = t.closest('button, a, [role=button], [role=link], [role=tab]') || t;
+    const d = { tag: c.tagName.toLowerCase() };
+    if (t !== c) d.in = t.tagName.toLowerCase();
+    for (const [k, a] of [['role', 'role'], ['al', 'aria-label'], ['ti', 'title'], ['id', 'data-testid'], ['qa', 'data-qa'], ['dt', 'data-test']]) {
+      const v = clip(c.getAttribute(a), 40);
+      if (v) d[k] = v;
+    }
+    const cls = (typeof c.className === 'string' ? c.className : '').split(/\\s+/).filter(x => /^[A-Za-z0-9_-]{2,32}$/.test(x)).slice(0, 6);
+    if (cls.length) d.cl = cls.join(' ').toLowerCase();
+    if (/^(button|a)$/.test(d.tag) || d.role === 'button') {
+      const tx = clip(c.textContent, 25);
+      if (tx && tx.length < 25) d.tx = tx;
+    }
+    return d;
+  };
   const push = (e, flush) => { q.push(e); if (flush) send(); };
   const opt = { capture: true, passive: true };
   setInterval(send, 250);
@@ -38,6 +59,7 @@ INIT_SCRIPT = """
     const r = el && el.getBoundingClientRect ? el.getBoundingClientRect() : null;
     const ev = { t: now(), k: 'c', x: e.clientX, y: e.clientY };
     if (r && r.width > 0 && r.height > 0) { ev.rx = (e.clientX - r.left) / r.width; ev.ry = (e.clientY - r.top) / r.height; }
+    if (e.target && e.target.closest) { try { ev.tg = describe(e.target); } catch (_) {} }
     push(ev, true);
   }, opt);
   addEventListener('blur', () => push({ t: now(), k: 'f', v: 0 }), opt);
