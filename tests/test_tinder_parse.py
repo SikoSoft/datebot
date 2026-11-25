@@ -25,7 +25,12 @@ RECS = {
                 "jobs": [{"title": {"name": "Nurse"}, "company": {"name": "City Hospital"}}],
                 "schools": [{"name": "State U"}],
                 "user_interests": {"selected_interests": []},
-                "selected_descriptors": [{"name": "Smoking", "choice_selections": [{"name": "Non-smoker"}]}],
+                "selected_descriptors": [
+                    {"name": "Smoking", "choice_selections": [{"name": "Non-smoker"}]},
+                    # shape verified from real traffic: no "name", the value is in measurable_selection
+                    {"id": "de_30", "type": "measurement", "section_name": "Height",
+                     "measurable_selection": {"value": 172, "min": 90, "max": 257, "unit_of_measure": "cm"}},
+                ],
             },
         },
         {"type": "ad", "ad": {"id": "x"}},
@@ -43,6 +48,7 @@ def test_parse_recs_extracts_profiles_and_skips_non_users():
     assert p.extra["distance_mi"] == 12 and p.extra["city"] == "Portland"
     assert p.extra["jobs"] == ["Nurse", "City Hospital"] and p.extra["schools"] == ["State U"]
     assert p.extra["descriptors"] == ["Smoking: Non-smoker"]
+    assert p.extra["height_cm"] == 172 and "Height" not in " ".join(p.extra["descriptors"])
     assert "interests" not in p.extra
 
 

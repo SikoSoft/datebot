@@ -89,6 +89,16 @@ def _descriptors(user: dict) -> list[str]:
     return out
 
 
+def _height_cm(user: dict) -> int | None:
+    """Height from the `measurement` descriptor (id de_30, section "Height"); only cm is understood."""
+    for d in user.get("selected_descriptors") or []:
+        sel = d.get("measurable_selection") if isinstance(d, dict) else None
+        if (isinstance(sel, dict) and d.get("section_name") == "Height" and sel.get("unit_of_measure") == "cm"
+                and isinstance(sel.get("value"), (int, float))):
+            return round(sel["value"])
+    return None
+
+
 def _profile(item: dict) -> CapturedProfile | None:
     user = item.get("user") if isinstance(item.get("user"), dict) else None
     if not user or not user.get("_id"):
@@ -105,6 +115,7 @@ def _profile(item: dict) -> CapturedProfile | None:
         "schools": _names(user.get("schools")),
         "interests": _names(user.get("user_interests")),
         "descriptors": _descriptors(user),
+        "height_cm": _height_cm(user),  # kept out of the text embedding on purpose: it is a rule, not taste
     }
     return CapturedProfile(
         external_id=str(user["_id"]),
