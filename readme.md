@@ -227,6 +227,8 @@ Every number comes from profiles the model was *not* trained on (cross-validatio
 - **ROC AUC** is the headline: 0.5 is a coin flip, 0.7 is decent, 0.8+ is good. Accuracy alone misleads when
   you pass on most profiles, so it is shown next to the "always guess the common answer" baseline.
 - **What it learns from:** AUC using photos only, bio text only, and both.
+- **By source:** one pooled model learns from every app, so this splits the same cross-validated scores per app
+  (Badoo, Tinder, ...) to show where it predicts well and where it does not.
 - **Does more rating help?** A learning curve. If it is still rising, keep rating; if flat, more of the same will not help.
 - **Has your taste shifted?** Trains on your oldest ratings and tests on your newest.
 - **Auto-swipe bands:** the score cut-offs where it is, say, 90% right on likes and 95% right on passes, how many
