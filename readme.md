@@ -168,6 +168,19 @@ never rejected on that basis. Keywords match whole words in the bio and prompts 
 "non-smoker", but will match "non smoker", so use phrases carefully). `--require` rejects profiles that mention
 none of the given words.
 
+Rules for things the model can't (and shouldn't) learn from photos:
+
+```bash
+uv run datebot filters set --reject-height-from-cm 178 \
+  --field-keyword politics=left --field-keyword politics=vänster --block "hjärtat till vänster"
+```
+
+- `--reject-height-from-cm N` rejects anyone N cm or taller, read from a "Height: 178 cm" line. Unknown height passes.
+- `--field-keyword FIELD=word` matches only inside the labelled line `FIELD: value` (so a bare "left" in a bio
+  never triggers, and "Politics: Liberal" passes). Today only profiles whose source captures that field can match.
+- Profiles you already rated that trip a rule are **excluded from training and `eval`**, not deleted, so a pass
+  caused by a rule never teaches the model what you find unattractive. Re-run `datebot train` after changing rules.
+
 ## Capturing from Tinder (web)
 
 ```bash

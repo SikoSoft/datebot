@@ -27,7 +27,7 @@ Datebot: learns the user's dating preferences from their own swipes and scores p
 
 - `db.py` SQLite. Ratings have an `origin`: `manual` (rated in UI), `app` (your own captured swipe), `auto` (the bot's swipe). **`auto` must never become a training label**; `latest_ratings` already excludes it.
 - `embed.py` local CLIP embeddings (photos; bio/prompts/interests embedded per line, pooled to [mean, max]). `model.py` features (`featurize`: photo mean, photo max, lead photo, text mean, text max, has_text; `FEATURE_VERSION` 3) + LogisticRegression, score = P(like)*100, named snapshots in `data/models/`.
-- `filters.py` hard deal-breakers (age, distance, keywords) applied before the model.
+- `filters.py` hard deal-breakers (age, distance, keywords, height, field-scoped keywords) applied before the model. Rated profiles that trip a rule are excluded from `model.training_data` (never deleted).
 - `evaluate.py` out-of-fold evaluation and the auto-swipe score bands (`suggest_thresholds`).
 - `capture/` passive Chrome listeners: `tinder.py` parsers, `recorder.py`, `browser.py` (listener, observer hooks, PageDriver), `discover.py` (raw traffic dump for unmapped sites).
 - `autoswipe/` `logic.py` (bands, card queue, handshake, governor), `runner.py` (controller with halt-on-surprise), `assess.py` (DB/model glue).
