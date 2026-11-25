@@ -19,13 +19,13 @@
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; }
   .photos { display:flex; gap:6px; overflow-x:auto; }
   .photos img { height:360px; border-radius:10px; background:#000; flex:none; max-width:100%; object-fit:cover; }
-  .top { display:flex; justify-content:space-between; align-items:baseline; margin:10px 0 4px; }
+  .top { display:flex; white-space:nowrap; overflow:hidden; justify-content:space-between; align-items:baseline; margin:10px 0 4px; }
   .top h2 { margin:0; font-size:19px; }
   .score { font-size:26px; font-weight:700; }
   .tag { display:inline-block; padding:1px 9px; border-radius:99px; font-size:12px; font-weight:600; color:#fff; }
   .tag.like { background:var(--like); } .tag.pass { background:var(--pass); } .tag.none { background:var(--muted); }
-  p.bio { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); }
-  .why { margin-top:10px; font-size:13px; }
+  p.bio { white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); height:120px; overflow-y:auto; margin:8px 0; }
+  .why { margin-top:10px; font-size:13px; height:190px; overflow:hidden; }
   .why div { display:flex; align-items:center; gap:8px; margin:3px 0; }
   .why .lbl { width:110px; flex:none; }
   .why .track { flex:1; height:8px; background:var(--line); border-radius:4px; position:relative; }
@@ -109,10 +109,9 @@ async function show() {
   const meta = el('div', 'hint', `#${p.id} · ${p.source} · model guess ${p.score == null ? 'n/a' : Math.round(p.score) + '/100'} · you: `);
   meta.append(el('span', 'tag ' + (d.yours == null ? 'none' : d.yours ? 'like' : 'pass'), d.yours == null ? 'unrated' : d.yours ? 'liked' : 'passed'));
   card.append(meta);
-  if (p.bio) card.append(el('p', 'bio', p.bio));
-  if (!d.model_active) card.append(el('div', 'hint', 'No trained model yet: run train first.'));
-  else if (!d.why) card.append(el('div', 'hint', 'No embeddings for this profile yet (run datebot embed).'));
-  else card.append(why(d.why));
+  card.append(el('p', 'bio', p.bio || ''));  // always present so the card height never changes
+  if (d.why) card.append(why(d.why));
+  else card.append(el('div', 'why hint', d.model_active ? 'No embeddings for this profile yet (run datebot embed).' : 'No trained model yet: run train first.'));
   v.append(card);
 }
 
