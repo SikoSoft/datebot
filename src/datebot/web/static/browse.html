@@ -31,7 +31,7 @@
   .why .track { flex:1; height:8px; background:var(--line); border-radius:4px; position:relative; }
   .why .fill { position:absolute; top:0; height:100%; border-radius:4px; }
   .why .num { width:50px; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
-  .nav { display:flex; gap:8px; align-items:center; justify-content:center; margin-top:12px; }
+  .nav { display:flex; gap:8px; align-items:center; justify-content:center; margin:0 0 12px; }
   #pos { min-width:90px; text-align:center; }
 </style>
 </head>
@@ -57,10 +57,10 @@
     <input id="jump" type="number" min="1" placeholder="Go to #" style="width:90px">
   </div>
   <div class="hint">Nothing here rates or changes anything. ← / → (or J / K) move between profiles.</div>
-  <div id="view"></div>
   <div class="nav">
     <button class="sm" id="prev">← Prev</button><span id="pos" class="hint"></span><button class="sm" id="next">Next →</button>
   </div>
+  <div id="view"></div>
 </main>
 <script>
 const $ = id => document.getElementById(id);
