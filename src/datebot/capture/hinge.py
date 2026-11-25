@@ -113,6 +113,7 @@ class Event:
     kind: str  # "profile" or "swipe"
     profile: CapturedProfile | None = None
     swipe: Swipe | None = None
+    at: float | None = None  # epoch seconds, stamped by the live capture (a swipe's is when the request started)
 
 
 class HingeSession:
