@@ -172,6 +172,13 @@ function render() {
   const t = $('tiles'); t.replaceChildren(tile(s.rated, 'rated profiles'), tile(s.likes, 'likes'), tile(s.passes, 'passes'), tile(pct(base), 'like rate'));
   if (s.fake.threshold !== null) t.append(tile(s.fake.excluded, `likely fakes left out (${s.fake.excluded_likes} liked)`));
   if (say_stale) t.append(tile('!', 'server is running old code: restart `datebot ui` to enable the fake filter'));
+  if (s.embeddings) {
+    const e = s.embeddings, n = el('div', 'tile');
+    const when = e.last_at ? 'Photo embeddings last updated ' + new Date(e.last_at.replace(' ', 'T') + 'Z').toLocaleString()
+      : (e.embedded_photos ? 'Photo embeddings: update time not recorded (older ones)' : 'No photo embeddings yet');
+    const todo = e.pending_photos ? ` · ${e.pending_photos} photos on ${e.pending_profiles} profiles not embedded yet, so they are missing from the "guess" cards: run \`datebot embed\` or Train` : ' · all photos embedded';
+    n.append(el('span', '', when + todo)); t.append(n);
+  }
   if (s.visual_note) { const n = el('div', 'tile'); n.append(el('span', '', s.visual_note)); t.append(n); }
 
   $('fakev').textContent = +$('fake').value > 100 ? 'off' : $('fake').value;
