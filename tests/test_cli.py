@@ -161,3 +161,13 @@ def test_eval_explain_and_score_embed_new_profiles_too(tmp_path, monkeypatch):
     out = runner.invoke(app, ["score"])
     assert out.exit_code == 0 and "Embedded 1 new photo(s) first." in out.output
     assert calls == [12, 1, 1]
+
+
+def test_behavior_commands(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    assert "No behaviour model" in runner.invoke(app, ["behavior", "reset"]).output
+    assert runner.invoke(app, ["behavior", "show"]).exit_code == 1
+    assert runner.invoke(app, ["behavior", "train", "--edges", "50,10"]).exit_code != 0
+    r = runner.invoke(app, ["behavior", "train"])
+    assert r.exit_code == 1 and "at least" in r.output
+    assert "Deleted 0" in runner.invoke(app, ["behavior", "clear-data", "--yes"]).output

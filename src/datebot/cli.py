@@ -327,6 +327,69 @@ def capture_hinge_probe() -> None:
     typer.echo(hinge_probe.summarize())
 
 
+behavior_app = typer.Typer(
+    help="How you behave when swiping (dwell, pointer, scroll, rhythm), learned alongside your taste model.",
+    no_args_is_help=True)
+app.add_typer(behavior_app, name="behavior")
+
+
+@behavior_app.command("train")
+def behavior_train(
+    name: str = typer.Option("default", help="Behaviour model name; use different names to keep snapshots."),
+    source: Optional[str] = typer.Option(None, help="Only this app (hinge | tinder | badoo); default pools all."),
+    edges: str = typer.Option("0,30,50,70,100", help="Preference-score band edges, comma separated."),
+    pref: str = typer.Option("default", help="Preference model whose scores condition the bands."),
+) -> None:
+    """Learn your dwell/behaviour distributions per preference-score band from captured swipes."""
+    from datebot import behavior_model
+    from datebot.embed import EMBED_ID
+
+    try:
+        edge_values = tuple(float(x) for x in edges.split(","))
+        if len(edge_values) < 2 or list(edge_values) != sorted(edge_values):
+            raise ValueError
+    except ValueError:
+        raise typer.BadParameter("edges must be ascending numbers like 0,30,50,70,100")
+    with db.session() as conn:
+        _embed_new(conn)
+        try:
+            m = behavior_model.train(conn, EMBED_ID, name, source, edge_values, pref)
+        except ValueError as e:
+            typer.secho(str(e), fg=typer.colors.RED)
+            raise typer.Exit(1)
+    typer.echo(behavior_model.format_report(m))
+
+
+@behavior_app.command("show")
+def behavior_show(name: str = typer.Option("default")) -> None:
+    """Print a trained behaviour model."""
+    from datebot import behavior_model
+
+    m = behavior_model.load(name)
+    if not m:
+        typer.secho(f"No behaviour model '{name}'. Run: datebot behavior train", fg=typer.colors.RED)
+        raise typer.Exit(1)
+    typer.echo(behavior_model.format_report(m))
+
+
+@behavior_app.command("reset")
+def behavior_reset(name: str = typer.Option("default")) -> None:
+    """Forget a trained behaviour model (collected interactions are kept, so you can retrain)."""
+    from datebot import behavior_model
+
+    typer.echo("Behaviour model removed." if behavior_model.reset(name) else f"No behaviour model '{name}'.")
+
+
+@behavior_app.command("clear-data")
+def behavior_clear_data(yes: bool = typer.Option(False, "--yes", help="Skip confirmation.")) -> None:
+    """Erase all collected behaviour telemetry. Profiles, photos and ratings are kept."""
+    if not yes:
+        typer.confirm("Delete ALL behaviour telemetry?", abort=True)
+    with db.session() as conn:
+        n = db.clear_interactions(conn)
+    typer.echo(f"Deleted {n} interaction(s).")
+
+
 autoswipe_app = typer.Typer(help="Let the model swipe when it is confident (acts on your account!).", no_args_is_help=True)
 app.add_typer(autoswipe_app, name="autoswipe")
 
