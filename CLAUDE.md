@@ -18,9 +18,9 @@ Datebot: learns the user's dating preferences from their own swipes and scores p
 
 ## Setup and commands
 
-- Python 3.12 + `uv`. Always sync with all extras: `uv sync --extra embed --extra ui --extra capture`.
+- Python 3.12 + `uv`. Always sync with all extras: `uv sync --extra embed --extra ui --extra capture --extra phone`.
 - Tests: `uv run pytest -q -m "not slow"` (slow = CLIP embedding and real-Chrome tests; ~91 fast tests, all passing).
-- CLI: `datebot --help`. Main commands: `import`, `embed`, `train`, `score`, `eval`, `ui`, `stats`, `filters`, `reset-model`, `reset-ratings`, `capture tinder|badoo`, `autoswipe tinder|badoo`. See `readme.md` for usage.
+- CLI: `datebot --help`. Main commands: `import`, `embed`, `train`, `score`, `eval`, `ui`, `stats`, `filters`, `reset-model`, `reset-ratings`, `capture tinder|badoo|hinge|hinge-replay|hinge-probe`, `autoswipe tinder|badoo`. See `readme.md` for usage.
 - All personal data is under gitignored `data/` (override with `DATEBOT_HOME`). Never commit it.
 
 ## Architecture (src/datebot)
@@ -31,6 +31,7 @@ Datebot: learns the user's dating preferences from their own swipes and scores p
 - `evaluate.py` out-of-fold evaluation and the auto-swipe score bands (`suggest_thresholds`).
 - `capture/` passive Chrome listeners: `tinder.py` parsers, `recorder.py`, `browser.py` (listener, observer hooks, PageDriver), `discover.py` (raw traffic dump for unmapped sites).
 - `autoswipe/` `logic.py` (bands, card queue, handshake, governor), `runner.py` (controller with halt-on-surprise), `assess.py` (DB/model glue).
+- `capture/hinge.py` (verified parser + `HingeSession` joining `user/v3/public` and `content/v2/public`), `hinge_addon.py` (mitmproxy addon run by `datebot capture hinge`), `hinge_probe.py` (raw traffic dump).
 - `web/` FastAPI rating UI (`datebot ui`).
 
 ## Status (as of 2026-11-25)
@@ -43,7 +44,7 @@ Done: rating UI, local model, resettable training, hard filters, text features (
 
 1. Badoo vote codes are confirmed (2=like, 3=pass).
 2. `autoswipe badoo` exists but the keyboard keys on badoo.com are an unverified guess. After the user runs it observe-only and then `--live` once, check the journal (`data/autoswipe.jsonl`); if it halts with "no swipe happened", find the right keys or switch `PageDriver` to clicking the like/pass buttons.
-3. **Hinge is the user's main app (iPhone).** Decided 2026-11-25: phone capture, no emulator (account risk, no better at reading traffic). `capture/hinge_probe.py` is a read-only mitmproxy addon (`mitmdump -s ...`); `datebot capture hinge-probe` summarizes readable vs certificate-pinned hosts (readme: "Probing Hinge from your iPhone"). **Waiting on the user to run the probe.** If hosts are readable: map the wire format from the dump, then write a parser (fill `bio`, photos in order, `extra["prompts"]` as "Prompt: answer" lines; see `capture/badoo.py`). If pinned: fall back to macOS iPhone Mirroring + screen parsing; never bypass pinning (detection evasion). Never act on their account without asking.
+3. **Hinge (iPhone) capture is built and verified against a real session** (traffic readable, not pinned; 41 profiles / 14 swipes parsed). Still to do: user runs `datebot capture hinge` for real (`--extra phone`), optionally `datebot capture hinge-replay data/hinge-probe --import` for the session already captured. Unseen in traffic, so deliberately ignored and reported: a like without a comment and roses (only `note`=like, `skip`=pass are confirmed). No Hinge auto-swipe: ask the user before building anything that acts on their account.
 4. Have the user collect ~100 real ratings, run `datebot eval`, and tune from the report.
 5. Optional: review-queue UI for the cards auto-swipe leaves to the user (currently only announced in the terminal).
 

@@ -64,7 +64,7 @@ Rules of thumb:
 **First time, or after capturing a batch of profiles**
 
 ```bash
-uv sync --extra embed --extra ui --extra capture
+uv sync --extra embed --extra ui --extra capture --extra phone
 uv run datebot capture tinder         # swipe as usual; your swipes become ratings (stop with Ctrl+C / close Chrome)
                                        # your first swipe each run is ignored (Tinder's free 'perfect 10'); --keep-first records it
 uv run datebot train
@@ -184,7 +184,7 @@ uv run datebot filters set --reject-height-from-cm 178 \
 ## Capturing from Tinder (web)
 
 ```bash
-uv sync --extra embed --extra ui --extra capture
+uv sync --extra embed --extra ui --extra capture --extra phone
 uv run datebot capture tinder          # opens Chrome with its own saved profile; log in and swipe as normal
 uv run datebot train
 ```
@@ -213,7 +213,8 @@ Same idea as Tinder: it only listens. Profiles from the encounters feed are stor
 ## Probing Hinge from your iPhone
 
 Hinge is mobile-only, so capture goes through a proxy on this Mac. This first step is a **read-only probe**: it only
-records traffic and answers "can we read Hinge's API at all?". Hinge's hostnames and formats are not mapped yet.
+records traffic and answers "can we read Hinge's API at all?". Result (Nov 2026): yes, `prod-api.hingeaws.net` is readable
+and not pinned; see "Capturing from Hinge" below.
 
 1. `uv tool install mitmproxy`, then `mitmdump -s src/datebot/capture/hinge_probe.py` (listens on port 8080).
 2. iPhone, same Wi-Fi: Settings > Wi-Fi > (i) > Configure Proxy > Manual, server = this Mac's LAN IP, port 8080.
@@ -226,6 +227,20 @@ records traffic and answers "can we read Hinge's API at all?". Hinge's hostnames
 6. Turn the iPhone proxy back off and remove the mitmproxy profile when done: it can read all your phone's traffic.
 
 Dumps live in `data/hinge-probe/` (gitignored): other people's profile data, keep local.
+
+## Capturing from Hinge (iPhone)
+
+Same phone setup as the probe above (proxy + trusted mitmproxy certificate on the iPhone), but with the real recorder.
+Needs the `phone` extra: `uv sync --extra phone`.
+
+1. `datebot capture hinge` (listens on port 8080; `--port` to change). Leave it running.
+2. Use Hinge normally on the phone. Profiles (photos, prompts, job/hometown, height) are stored; your likes ("note")
+   and passes ("skip") become labeled ratings. Nothing is ever sent by datebot.
+3. Ctrl+C to stop; it prints what was recorded. Remember to turn the phone's proxy off afterwards.
+
+`datebot capture hinge-replay data/hinge-probe` runs an earlier probe dump through the same parser (dry run; add
+`--import` to store it). A like **without** a comment and roses have not been seen in traffic yet, so they are ignored
+and reported as "unrecognised ratings" rather than guessed.
 
 ## Auto-swipe (Tinder and Badoo web)
 
@@ -284,6 +299,6 @@ With under about 50 ratings the report warns that results are rough.
 - [x] Capture profiles and swipes from Tinder web
 - [x] Evaluation tooling (`datebot eval`)
 - [x] Capture from Badoo web
-- [ ] Capture from Hinge (mobile-only)
+- [x] Capture from Hinge (iPhone via mitmproxy; auto-swipe on Hinge not built)
 - [x] Auto-swipe with a confidence band (Tinder web; the middle band is left to you in the app)
 - [x] Review queue UI (audit the bot's swipes, feed back verdicts)
