@@ -104,7 +104,7 @@ In `datebot.db`:
   Next to it, `photos.embed_model` records which model made it (the `EMBED_ID` above).
 - `profiles.text_embedding` and `profiles.text_embed_model`: the same for the bio/prompt text, one per profile.
 
-They are saved the moment `datebot embed` (or capture/auto-swipe, which embeds on first sight) computes them. They are
+They are saved the moment they are computed, by `datebot embed` or automatically by `train`, `score`, `eval`, `explain` and auto-swipe. Capture and import only store profiles; they do not embed. They are
 plain columns, so any tool that reads SQLite can get at them. At 2 KB each, even thousands of profiles are a few
 megabytes.
 
