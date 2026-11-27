@@ -237,7 +237,9 @@ async function upload(files) {
     if (!current) await load(); else renderStatsOnly();
   } catch (e) { say(e.message); }
 }
-async function renderStatsOnly() { renderStats((await api('/api/next')).stats); }
+async function renderStatsOnly() { renderStats(await api('/api/stats')); }
+// Ratings also arrive from outside this page (capture sessions): refresh the counts while the tab is visible.
+setInterval(() => { if (!document.hidden) renderStatsOnly().catch(() => {}); }, 3000);
 
 const drop = $('drop');
 ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
