@@ -90,10 +90,17 @@ def create_app() -> FastAPI:
         return FileResponse(STATIC / "index.html")
 
     @app.get("/api/stats")
-    def stats():
-        """Counts only (cheap): polled by the page so ratings made elsewhere (e.g. capture) show up live."""
+    def stats(profile_id: int | None = None):
+        """Counts only (cheap): polled by the page so ratings made elsewhere (e.g. capture) show up live.
+
+        With profile_id, also says whether you have since rated that profile elsewhere (`profile_rated`),
+        so the page can move on from a card you already swiped in the app.
+        """
         with db.session() as conn:
-            return _stats(conn)
+            out = _stats(conn)
+            if profile_id is not None:
+                out["profile_rated"] = profile_id in db.latest_ratings(conn)
+            return out
 
     @app.get("/api/next")
     def next_profile(model_name: str = "default"):

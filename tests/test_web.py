@@ -208,3 +208,14 @@ def test_stats_endpoint_reflects_ratings_made_elsewhere(client):
         db.add_rating(conn, pid, True, origin="app")
     s = client.get("/api/stats").json()
     assert (s["rated"], s["likes"]) == (1, 1)
+
+
+def test_stats_says_when_the_current_profile_was_rated_elsewhere(client):
+    from datebot import db
+
+    pid = client.post("/api/profiles", files=[("photos", ("a.png", png(), "image/png"))], data={"name": "Ann"}).json()["id"]
+    assert client.get(f"/api/stats?profile_id={pid}").json()["profile_rated"] is False
+    with db.session() as conn:
+        db.add_rating(conn, pid, False, origin="app")
+    assert client.get(f"/api/stats?profile_id={pid}").json()["profile_rated"] is True
+    assert "profile_rated" not in client.get("/api/stats").json()
