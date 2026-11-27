@@ -94,6 +94,7 @@ def test_feed_diagnostics_explain_missing_profiles(tmp_path, monkeypatch, capsys
     cap._events.join()
     out = capsys.readouterr().out
     assert "feed offers 2 profile(s): 0 already stored, 2 not yet" in out
+    assert "feed order (? = not captured, do not spend a like on it): 1. ?, 2. ?" in out
     assert "app requested 2 profile record(s), got 1" in out
     assert "profile u2 that datebot never captured (was offered by the feed this run" in out
     assert "profile zz that datebot never captured (was never offered by the feed this run" in out

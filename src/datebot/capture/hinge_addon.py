@@ -67,9 +67,16 @@ class HingeCapture:
         if path == hinge.PATH_REC and status == 200:
             ids = hinge.parse_rec(response_text)
             with db.session(self.recorder.db_path) as conn:
-                stored = sum(db.find_profile_id(conn, SOURCE, i) is not None for i in ids)
+                names = []
+                for i in ids:
+                    row = conn.execute("SELECT name FROM profiles WHERE source = ? AND external_id = ?",
+                                       (SOURCE, i)).fetchone()
+                    names.append(None if row is None else row["name"] or "(no name)")
+            stored = sum(n is not None for n in names)
             self.offered.update(ids)
             print(f"[hinge] feed offers {len(ids)} profile(s): {stored} already stored, {len(ids) - stored} not yet", flush=True)
+            print("[hinge] feed order (? = not captured, do not spend a like on it): "
+                  + ", ".join(f"{n}. {name or '?'}" for n, name in enumerate(names, 1)), flush=True)
         elif path in (hinge.PATH_USER, hinge.PATH_CONTENT):
             asked = len(hinge.parse_requested_ids(request_text))
             got = len(hinge.parse_users(response_text) if path == hinge.PATH_USER else hinge.parse_contents(response_text))
