@@ -33,3 +33,15 @@ def test_swipe_dwell_comes_from_network_timestamps(tmp_path, monkeypatch):
     dwell = [json.loads(r["features"])["dwell_ms"] for r in rows]
     assert dwell == [8000, 12500]  # from arrival (100.5), then from the previous swipe (108.5)
     assert [r["liked"] for r in rows] == [0, 1] and all(r["profile_id"] for r in rows)
+
+
+def test_tls_failures_name_the_host(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    addon = importlib.import_module("datebot.capture.hinge_addon")
+    cap = addon.HingeCapture(Recorder(fetch=lambda u: b"", source="hinge", db_path=str(tmp_path / "t.db")))
+    cap.tls_failed_server(SimpleNamespace(conn=SimpleNamespace(
+        sni=hinge.HOST, address=("1.2.3.4", 443), error="Certificate verify failed")))
+    cap.tls_failed_client(SimpleNamespace(conn=SimpleNamespace(sni="img.example", error="client does not trust")))
+    out = capsys.readouterr().out
+    assert f"upstream TLS failed for {hinge.HOST} (Hinge API): Certificate verify failed" in out
+    assert "phone TLS failed for img.example: client does not trust" in out

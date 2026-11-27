@@ -78,6 +78,17 @@ class HingeCapture:
                 e.at = flow.request.timestamp_start
             self._events.put(e)
 
+    def tls_failed_server(self, data) -> None:
+        """Name the host whose certificate the proxy could not verify (mitmproxy only logs the phone's address)."""
+        conn = data.conn
+        host = conn.sni or (conn.address[0] if conn.address else "?")
+        print(f"[hinge] upstream TLS failed for {host}{' (Hinge API)' if host == hinge.HOST else ''}: {conn.error}")
+
+    def tls_failed_client(self, data) -> None:
+        """The phone rejected the proxy's certificate: not trusted, or the app pins its certificate."""
+        conn = data.conn
+        print(f"[hinge] phone TLS failed for {conn.sni or '?'}: {conn.error}")
+
     def done(self) -> None:
         self._events.join()
         c = self.recorder.counts
