@@ -305,7 +305,10 @@ def capture_badoo(
 
 
 @capture_app.command("hinge")
-def capture_hinge(port: int = typer.Option(8080, help="Port for the proxy your iPhone points at.")) -> None:
+def capture_hinge(
+    port: int = typer.Option(8080, help="Port for the proxy your iPhone points at."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="List every request the phone makes (host and path), to debug."),
+) -> None:
     """Record Hinge profiles and your own swipes from your iPhone (needs the `phone` extra).
 
     Starts a mitmproxy on this Mac; set it up on the phone as in the readme ("Capturing from Hinge"). You use the
@@ -320,7 +323,8 @@ def capture_hinge(port: int = typer.Option(8080, help="Port for the proxy your i
         raise typer.BadParameter("mitmproxy is not installed: run `uv sync --extra phone`.")
     try:
         subprocess.run([str(mitmdump), "-s", str(addon), "--listen-port", str(port),
-                        "--set", "flow_detail=0", "--set", "termlog_verbosity=warn"], check=False)
+                        "--set", f"flow_detail={1 if verbose else 0}",
+                        "--set", f"termlog_verbosity={'info' if verbose else 'warn'}"], check=False)
     except KeyboardInterrupt:
         pass
 
