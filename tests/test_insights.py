@@ -137,3 +137,27 @@ def test_embedding_status(tmp_path):
     db.set_embedding(conn, a, np.zeros(4, dtype=np.float32), insights.embed.EMBED_ID)
     st = insights.build(conn, visual=None)["summary"]["embeddings"]
     assert st["last_at"] and st["embedded_photos"] == 1 and st["pending_photos"] == 1
+
+
+def test_ideal_picks_what_you_like_and_avoids_what_you_pass(tmp_path):
+    from datebot import ideal
+
+    conn = make_db(tmp_path)
+    # ids 1..40; ids 1..20 liked. Blonde = liked ones, black = passed ones, glasses on a coin-flip half.
+    labels = {pid: {"hair_colour": "blonde" if pid <= 20 else "black", "glasses": "yes" if pid % 2 else "no",
+                    "body_type": "athletic"} for pid in range(1, 41)}
+    r = ideal.build(conn, labels=labels, trained=None)
+    looks = {e["key"]: e for e in r["looks"]}
+    assert looks["hair_colour"]["pick"]["label"] == "blonde" and looks["hair_colour"]["pick"]["strength"] == "clear"
+    assert [a["label"] for a in looks["hair_colour"]["avoid"]] == ["black"]
+    assert "glasses" not in looks and "Glasses" in r["undecided"] and "body_type" not in looks
+    assert "blonde hair" in r["image_prompt"] and "black hair colour" in r["negative_prompt"]
+    ranked = {m["id"]: m for m in r["matches"]}
+    assert ideal.MIN_MATCH_TRAITS > 1 and all(m["match"] is None for m in ranked.values())  # one trait is too few
+
+
+def test_ideal_empty_database(tmp_path):
+    from datebot import ideal
+
+    r = ideal.build(db.connect(str(tmp_path / "e.db")), labels={}, trained=None)
+    assert r["looks"] == [] and r["image_prompt"] == "" and r["matches"] == []
