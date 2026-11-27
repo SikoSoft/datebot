@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from datebot import config, db, filters, ideal, ingest, insights, model, wants
+from datebot.web.links import profile_url
 
 STATIC = Path(__file__).parent / "static"
 log = logging.getLogger("datebot.web")
@@ -77,6 +78,7 @@ def _stats(conn) -> dict:
 def _card(conn, pid: int, score: float | None) -> dict:
     p = db.get_profile(conn, pid)
     return {"id": pid, "name": p.name, "age": p.age, "bio": p.bio, "source": p.source, "score": score,
+            "url": profile_url(p.source, p.external_id),
             "photos": [f"/photos/{Path(x).name}" for x in db.photo_paths(conn, pid)]}
 
 
@@ -129,7 +131,7 @@ def create_app() -> FastAPI:
             def entry(pid: int, **kw) -> dict:
                 c = _card(conn, pid, model.score_profile(conn, trained, pid) if trained else None)
                 return {"id": pid, "name": c["name"], "age": c["age"], "bio": c["bio"], "source": c["source"],
-                        "score": c["score"], "photos": c["photos"][:3], **kw}
+                        "url": c["url"], "score": c["score"], "photos": c["photos"][:3], **kw}
 
             auto = []
             for row in db.auto_swipe_log(conn, limit):

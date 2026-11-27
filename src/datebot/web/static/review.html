@@ -89,6 +89,7 @@ function item(p, kind) {
   h.append(nameLink);
   if (p.score != null) h.append(el('span', 'score', `${Math.round(p.score)}`));
   body.append(h);
+  if (p.url) { const a = el('a', 'hint', `Open in ${p.source} ↗`); a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; body.append(a); }
   if (kind === 'auto') {
     const row = el('div', 'row');
     row.append(el('span', 'tag ' + (p.bot_liked ? 'like' : 'pass'), p.bot_liked ? 'Bot liked' : 'Bot passed'));

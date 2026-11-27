@@ -153,6 +153,7 @@ function render() {
   if (current.score != null) { const s = document.createElement('span'); s.className = 'score'; s.textContent = Math.round(current.score); s.title = 'Model score (0-100)'; info.append(s); }
   const h = document.createElement('h2'); h.textContent = [current.name, current.age].filter(Boolean).join(', ') || `Profile #${current.id}`;
   info.append(h);
+  if (current.url) { const a = document.createElement('a'); a.href = current.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.className = 'hint'; a.textContent = `Open in ${current.source} ↗`; info.append(a); }
   if (current.bio) { const p = document.createElement('p'); p.textContent = current.bio; info.append(p); }
   box.append(photo, info); stage.append(box);
 }

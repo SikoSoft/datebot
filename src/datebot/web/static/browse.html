@@ -119,6 +119,7 @@ async function show() {
   card.append(top);
   const meta = el('div', 'hint', `#${p.id} · ${p.source} · model guess ${p.score == null ? 'n/a' : Math.round(p.score) + '/100'} · you: `);
   meta.append(el('span', 'tag ' + (d.yours == null ? 'none' : d.yours ? 'like' : 'pass'), d.yours == null ? 'unrated' : d.yours ? 'liked' : 'passed'));
+  if (p.url) { const a = el('a', '', ` · open in ${p.source} ↗`); a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; meta.append(a); }
   card.append(meta);
   card.append(el('p', 'bio', p.bio || ''));  // always present so the card height never changes
   if (d.why) card.append(why(d.why));
