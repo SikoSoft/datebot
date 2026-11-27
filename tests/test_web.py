@@ -197,3 +197,14 @@ def test_retrain_needs_a_model_and_runs_one_at_a_time(monkeypatch):
     assert webapp.maybe_retrain(webapp.AUTO_RETRAIN_EVERY) is True
     assert webapp.maybe_retrain(webapp.AUTO_RETRAIN_EVERY) is False  # one is already running
     webapp._retraining.release()
+
+
+def test_stats_endpoint_reflects_ratings_made_elsewhere(client):
+    from datebot import db
+
+    pid = client.post("/api/profiles", files=[("photos", ("a.png", png(), "image/png"))], data={"name": "Ann"}).json()["id"]
+    assert client.get("/api/stats").json()["rated"] == 0
+    with db.session() as conn:  # what a capture session does: an 'app' rating written outside the UI
+        db.add_rating(conn, pid, True, origin="app")
+    s = client.get("/api/stats").json()
+    assert (s["rated"], s["likes"]) == (1, 1)

@@ -89,6 +89,12 @@ def create_app() -> FastAPI:
     def index():
         return FileResponse(STATIC / "index.html")
 
+    @app.get("/api/stats")
+    def stats():
+        """Counts only (cheap): polled by the page so ratings made elsewhere (e.g. capture) show up live."""
+        with db.session() as conn:
+            return _stats(conn)
+
     @app.get("/api/next")
     def next_profile(model_name: str = "default"):
         """Next profile to rate: the model's most uncertain pick if a model exists, else oldest unrated."""
