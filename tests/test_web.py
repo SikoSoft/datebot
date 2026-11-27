@@ -104,7 +104,7 @@ def test_review_queue_audit_and_feedback(client):
 def test_review_page_is_served(client):
     r = client.get("/review")
     assert r.status_code == 200 and "Review queue" in r.text
-    assert 'href="/review"' in client.get("/").text
+    assert "/static/nav.js" in client.get("/").text  # the nav (with the Review link) is shared, see nav.js
 
 
 def test_saving_filters_from_the_panel_keeps_rules_it_cannot_edit(client):

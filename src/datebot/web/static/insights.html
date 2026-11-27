@@ -9,7 +9,7 @@
   @media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#f2f2f2; --card:#1e1e1e; --muted:#9a9aa0; --line:#2e2e2e; --bar:#6c6c74; --accent:#6f9bf0; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
-  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:var(--nav-h, 0px); background:var(--bg); z-index:5; }
   header h1 { font-size:17px; margin:0; }
   .ctl { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:13px; color:var(--muted); }
   a.sm, button.sm, select, input[type=search] { padding:6px 10px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; cursor:pointer; font:13px system-ui, sans-serif; text-decoration:none; }
@@ -29,9 +29,9 @@
   .hl .up { color:var(--like); } .hl .down { color:var(--pass); }
   .jump { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
   .jump a { padding:3px 11px; border:1px solid var(--line); border-radius:99px; color:var(--fg); text-decoration:none; font-size:13px; background:var(--card); }
-  h2.section { margin:26px 0 8px; font-size:17px; scroll-margin-top:70px; }
+  h2.section { margin:26px 0 8px; font-size:17px; scroll-margin-top:130px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(400px, 1fr)); gap:12px; align-items:start; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; scroll-margin-top:70px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; scroll-margin-top:130px; }
   .card.flash { outline:2px solid var(--accent); }
   .card h3 { margin:0; font-size:14.5px; flex:1; }
   .top { display:flex; align-items:flex-start; gap:8px; }
@@ -64,6 +64,7 @@
 </style>
 </head>
 <body>
+<script src="/static/nav.js"></script>
 <header>
   <h1>Insights</h1>
   <div class="ctl">
@@ -74,7 +75,6 @@
     <input type="search" id="q" placeholder="Find a stat…">
     <button class="sm" id="hiddenBtn">Hidden (0)</button>
   </div>
-  <span><a class="sm" href="/ideal">Ideal</a> <a class="sm" href="/browse">Browse</a> <a class="sm" href="/review">Review</a> <a class="sm" href="/">← Rate profiles</a></span>
 </header>
 <main>
   <div id="restorePanel" class="panel" style="display:none"></div>
