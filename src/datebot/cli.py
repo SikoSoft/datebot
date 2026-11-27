@@ -321,12 +321,25 @@ def capture_hinge(
     mitmdump = Path(sys.executable).parent / "mitmdump"
     if not mitmdump.exists():
         raise typer.BadParameter("mitmproxy is not installed: run `uv sync --extra phone`.")
+    def counts() -> tuple[int, int]:
+        with db.session() as conn:
+            row = conn.execute(
+                "SELECT (SELECT COUNT(*) FROM profiles WHERE source = 'hinge'),"
+                " (SELECT COUNT(*) FROM ratings r JOIN profiles p ON p.id = r.profile_id"
+                "  WHERE p.source = 'hinge' AND r.origin = 'app')").fetchone()
+        return row[0], row[1]
+
+    profiles_before, swipes_before = counts()
+    typer.echo("Listening. A line is printed for every profile stored and every swipe recorded. Ctrl+C to stop.")
     try:
         subprocess.run([str(mitmdump), "-s", str(addon), "--listen-port", str(port),
                         "--set", f"flow_detail={1 if verbose else 0}",
                         "--set", f"termlog_verbosity={'info' if verbose else 'warn'}"], check=False)
     except KeyboardInterrupt:
         pass
+    profiles_after, swipes_after = counts()  # read from the database, so it is right even if the addon's summary is lost
+    typer.echo(f"Stopped. Stored {profiles_after - profiles_before} new Hinge profile(s) and "
+               f"{swipes_after - swipes_before} swipe(s) this run.")
 
 
 @capture_app.command("hinge-replay")

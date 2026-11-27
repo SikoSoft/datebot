@@ -63,3 +63,19 @@ def test_conditional_headers_are_dropped_only_for_feed_and_profile_requests(tmp_
     for f in (req("/standouts/v3"), req("/rec/v2", host="other.example")):
         cap.request(f)
         assert "if-none-match" in f.request.headers
+
+
+def test_each_profile_and_swipe_prints_a_line(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    addon = importlib.import_module("datebot.capture.hinge_addon")
+    rec = Recorder(fetch=lambda u: png() + u.encode(), source="hinge", db_path=str(tmp_path / "t.db"))
+    cap = addon.HingeCapture(rec)
+    cap.response(flow(hinge.PATH_USER, json.dumps(users("u1")), t_end=1.0))
+    cap.response(flow(hinge.PATH_CONTENT, json.dumps(contents("u1")), t_end=1.0))
+    cap.response(flow(hinge.PATH_RATE, "{}", json.dumps({"subjectId": "u1", "rating": "skip"}), t_req=2.0))
+    cap.response(flow(hinge.PATH_RATE, "{}", json.dumps({"subjectId": "ghost", "rating": "note"}), t_req=3.0))
+    cap._events.join()
+    out = capsys.readouterr().out
+    assert "stored profile" in out and "(1 new this run)" in out
+    assert "RECORDED PASS on" in out and "(1 swipe(s) this run)" in out
+    assert "NOT recorded: LIKE on a profile datebot never captured" in out

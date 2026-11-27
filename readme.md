@@ -236,7 +236,7 @@ Endpoint and data-contract notes for every app live in [docs/api-endpoints.md](d
 Same phone setup as the probe above (proxy + trusted mitmproxy certificate on the iPhone), but with the real recorder.
 Needs the `phone` extra: `uv sync --extra phone`.
 
-1. `datebot capture hinge` (listens on port 8080; `--port` to change; `--verbose` lists every request the phone makes, for debugging). Leave it running.
+1. `datebot capture hinge` (listens on port 8080; `--port` to change; `--verbose` lists every request the phone makes, for debugging). Leave it running. It prints `[hinge] stored profile ...` for each new profile and `[hinge] RECORDED PASS/LIKE on <name>` for each swipe (or `NOT recorded` if the profile was never captured), and a totals line when you stop.
 2. Use Hinge normally on the phone. Profiles (photos, prompts, job/hometown, height) are stored; your likes ("note")
    and passes ("skip") become labeled ratings. Nothing is ever sent by datebot. The one change it makes: it drops the `If-None-Match` / `If-Modified-Since` headers from the feed and profile requests, so Hinge sends full profiles instead of "304 unchanged" (cached cards are otherwise invisible to the proxy and your swipes on them are lost).
 3. Ctrl+C to stop; it prints what was recorded. Remember to turn the phone's proxy off afterwards.

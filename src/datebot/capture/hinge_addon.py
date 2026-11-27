@@ -15,7 +15,7 @@ import json
 import queue
 import threading
 
-from datebot import config
+from datebot import config, db
 from datebot.interactions import InteractionTracker
 from datebot.capture import hinge
 from datebot.capture.recorder import Recorder
@@ -48,15 +48,31 @@ class HingeCapture:
         while True:
             event = self._events.get()
             try:
+                c = self.recorder.counts
                 if event.kind == "profile":
+                    before = c.new
                     self.recorder.record_profiles([event.profile])
+                    if c.new > before:
+                        print(f"[hinge] stored profile {event.profile.name} ({c.new} new this run)", flush=True)
                 else:
-                    self.recorder.record_swipe(
-                        event.swipe, at_ms=None if event.at is None else event.at * 1000)
+                    self._swipe(event)
             except Exception as e:  # one bad profile must not stop the capture
                 print(f"[hinge] skipped one event: {type(e).__name__}: {e}")
             finally:
                 self._events.task_done()
+
+    def _swipe(self, event) -> None:
+        swipe, c = event.swipe, self.recorder.counts
+        recorded = self.recorder.record_swipe(swipe, at_ms=None if event.at is None else event.at * 1000)
+        verdict = "LIKE" if swipe.liked else "PASS"
+        if recorded:
+            with db.session(self.recorder.db_path) as conn:
+                pid = db.find_profile_id(conn, SOURCE, swipe.user_id)
+                row = conn.execute("SELECT name FROM profiles WHERE id = ?", (pid,)).fetchone()
+            print(f"[hinge] RECORDED {verdict} on {row['name']} ({c.swipes} swipe(s) this run)", flush=True)
+        else:
+            print(f"[hinge] NOT recorded: {verdict} on a profile datebot never captured "
+                  f"({c.unknown_swipes} such this run)", flush=True)
 
     def request(self, flow) -> None:
         if flow.request.pretty_host != hinge.HOST or flow.request.path.split("?")[0] not in FRESH_PATHS:
