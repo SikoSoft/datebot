@@ -16,7 +16,7 @@ def test_embed_pending_stores_normalized_vectors(tmp_path):
     assert embed.embed_pending(conn) == 1
     assert embed.embed_pending(conn) == 0  # idempotent
     emb = db.profile_embeddings(conn, pid, embed.EMBED_ID)
-    assert emb.shape == (1, 512)
+    assert emb.shape == (1, 768)
     assert abs(np.linalg.norm(emb[0]) - 1) < 1e-3
 
 
@@ -29,7 +29,7 @@ def test_embed_pending_embeds_bio_text(tmp_path):
     silent = db.add_profile(conn, "manual", [str(img)], external_id="b")
     embed.embed_pending(conn)
     vec = db.text_embedding(conn, hiker, embed.EMBED_ID)
-    assert vec.shape == (1024,)  # [mean, max] of the per-line embeddings
+    assert vec.shape == (1536,)  # [mean, max] of the per-line embeddings
     assert db.text_embedding(conn, silent, embed.EMBED_ID) is None
     assert db.profiles_missing_text_embeddings(conn, embed.EMBED_ID) == []
 
