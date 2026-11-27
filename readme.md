@@ -316,6 +316,31 @@ Every number comes from profiles the model was *not* trained on (cross-validatio
 
 With under about 50 ratings the report warns that results are rough.
 
+## Backups: what is what
+
+Everything personal lives under `data/` (gitignored; override with `DATEBOT_HOME`). Not all of it is equally precious:
+
+| What | Where | Irreplaceable? |
+|---|---|---|
+| **Profiles, bios, photo records** | `data/datebot.db` tables `profiles`, `photos` | **Yes**: capture is a one-time stream; you cannot re-fetch profiles you already swiped |
+| **Your yes/no data** (and the bot's, marked by `origin`) | `data/datebot.db` table `ratings` | **Yes**: this is your taste, the thing the model learns from |
+| **Swipe behaviour** | `data/datebot.db` tables `sessions`, `interactions` | Yes (timing/pointer data) |
+| **Photo files** | `data/photos/` | Yes, and the biggest part (hundreds of MB). Content-named and never modified |
+| **Embeddings** (CLIP vectors) | inside `datebot.db` (`photos.embedding`, `profiles.text_embedding`), plus `data/cache/` | No: `datebot embed` regenerates them from the photos/text, but that takes a while |
+| **Trained models** | `data/models/*.joblib`, `data/models/behavior/` | No: `datebot train` rebuilds them from the ratings in seconds. Backed up so a restore is instantly usable |
+| **Hard filters** | `data/filters.json` | Small but yours; cheap to keep |
+| **Chrome profile / raw dumps** | `data/browser/`, `data/*-dump*`, `data/hinge-probe/` | Not backed up: browser logins are sensitive, dumps are debugging aids |
+
+- `datebot backup` writes a consistent snapshot to `data/backups/<timestamp>/` (db via SQLite's online backup, so it is
+  safe while the UI or a capture runs). `--no-photos` makes a small snapshot (db, filters, models) in seconds;
+  `--to /path` writes elsewhere.
+- `datebot restore [folder]` puts a snapshot back (default: the newest). It first saves the current state, so a restore can be undone.
+- `reset-ratings` saves a backup automatically before erasing anything.
+- `data/backups/` is on the same disk as the data, so it does not protect against a lost or dead disk. Copy it
+  somewhere else now and then (external drive, cloud folder): `datebot backup --to ~/Dropbox/datebot-backup-$(date +%F)`.
+  These contain other people's photos, so keep the copy private/encrypted.
+- Take a backup before anything risky (schema changes, bulk edits, experiments that write to the db).
+
 ## Resetting
 
 - `datebot reset-model` (or the UI button): forget the trained model; ratings are kept, so you can retrain.
