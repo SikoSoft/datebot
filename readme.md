@@ -108,7 +108,7 @@ Run `uv run datebot --help` (or `datebot <command> --help`) for the options. "Ne
 |---|---|---|
 | `import PATH [--source manual]` | Copies photos from a folder into the database. Each subfolder is one profile; loose images are one profile each. Stores only; embedding happens at the next `train`. | When you have screenshots/photos to rate by hand. |
 | `capture tinder` / `capture badoo` | Opens Chrome; you log in and swipe as usual and datebot records every profile shown plus your own swipes (as ratings). Passive: never swipes for you. Stores only; embedding happens at the next `train`. | Whenever you swipe, to collect data for free. |
-| `ui` | Starts the local web app: add profiles, rate them, set filters, train/evaluate/reset with buttons. | Your main way to rate. |
+| `ui` | Starts the local web app: add profiles (re-uploading the same photos returns the existing profile instead of a duplicate), rate them, set filters, train/evaluate/reset with buttons. | Your main way to rate. |
 
 ### Teaching the model
 
