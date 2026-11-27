@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datebot ideal</title>
+<style>
+  :root { --bg:#f6f5f3; --fg:#1d1d1f; --card:#fff; --muted:#6e6e73; --like:#1f9d55; --pass:#d64545; --line:#e3e1dd; --accent:#3b6fd4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#f2f2f2; --card:#1e1e1e; --muted:#9a9aa0; --line:#2e2e2e; --accent:#6f9bf0; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5; }
+  header h1 { font-size:17px; margin:0; }
+  .ctl { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:13px; color:var(--muted); }
+  a.sm, button.sm, select { padding:6px 10px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; cursor:pointer; font:13px system-ui, sans-serif; text-decoration:none; }
+  main { max-width:1180px; margin:16px auto; padding:0 16px 60px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:16px; }
+  .panel h2 { margin:0 0 4px; font-size:16px; }
+  .hint { color:var(--muted); font-size:12.5px; }
+  .lead { font-size:17px; margin:8px 0; }
+  .traits { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:8px; margin-top:10px; }
+  .trait { border:1px solid var(--line); border-radius:10px; padding:8px 10px; }
+  .trait small { display:block; color:var(--muted); font-size:11.5px; }
+  .trait b { font-size:15px; }
+  .trait .pct { float:right; color:var(--like); font-variant-numeric:tabular-nums; }
+  .trait.lean b { opacity:.75; } .trait.lean .pct { color:var(--muted); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { font-size:12.5px; padding:2px 10px; border-radius:99px; border:1px solid var(--line); }
+  .chip.up { border-color:var(--like); } .chip.down { border-color:var(--pass); }
+  textarea { width:100%; min-height:90px; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px; font:13px/1.4 ui-monospace, monospace; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px; }
+  .prof { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .prof img { width:100%; height:260px; object-fit:cover; display:block; }
+  .prof .thumbs { display:flex; } .prof .thumbs img { height:56px; flex:1; min-width:0; cursor:pointer; opacity:.8; }
+  .prof .info { padding:8px 10px; font-size:13px; }
+  .tag { font-size:11px; padding:0 7px; border-radius:99px; border:1px solid var(--line); margin-left:4px; }
+  .tag.l { color:var(--like); border-color:var(--like); } .tag.p { color:var(--pass); border-color:var(--pass); }
+  .empty { padding:30px 16px; text-align:center; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Your ideal</h1>
+  <div class="ctl">
+    <label>App <select id="source"><option value="">all</option></select></label>
+    <label>Hide likely fakes ≥ <select id="fake"><option value="60">60</option><option value="40">40</option><option value="80">80</option><option value="101">off</option></select></label>
+  </div>
+  <span><a class="sm" href="/insights">Insights</a> <a class="sm" href="/browse">Browse</a> <a class="sm" href="/">← Rate profiles</a></span>
+</header>
+<main id="main"><div class="empty">Loading…</div></main>
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+const pct = x => Math.round(x * 100) + '%';
+let data = null, sortBy = 'match';
+
+async function load() {
+  const qs = new URLSearchParams();
+  if ($('source').value) qs.set('source', $('source').value);
+  qs.set('fake_threshold', $('fake').value);
+  data = await (await fetch('/api/ideal?' + qs)).json();
+  render();
+}
+
+function traitBox(e) {
+  const p = e.pick, b = el('div', 'trait ' + (p.strength || ''));
+  b.append(el('small', '', e.title + (e.visual ? ' (guess)' : '')));
+  const pc = el('span', 'pct', pct(p.rate)); b.append(pc);
+  b.append(el('b', '', p.label === 'shows it' ? 'yes' : p.label));
+  const sub = [`n=${p.n}`, p.strength === 'lean' ? 'leaning, not certain' : 'clear'];
+  if (e.also.length) sub.push('also: ' + e.also.map(a => a.label).join(', '));
+  b.append(el('small', '', sub.join(' · ')));
+  return b;
+}
+
+function profCard(p) {
+  const c = el('div', 'prof');
+  const big = el('img'); big.src = p.photos[0] || ''; big.loading = 'lazy'; c.append(big);
+  if (p.photos.length > 1) {
+    const t = el('div', 'thumbs');
+    p.photos.forEach(u => { const i = el('img'); i.src = u; i.loading = 'lazy'; i.onclick = () => big.src = u; t.append(i); });
+    c.append(t);
+  }
+  const info = el('div', 'info');
+  const name = el('b', '', `${p.name || '#' + p.id}${p.age ? ', ' + p.age : ''}`);
+  if (p.yours === true) name.append(el('span', 'tag l', 'you liked'));
+  else if (p.yours === false) name.append(el('span', 'tag p', 'you passed'));
+  else if (p.bot !== null && p.bot !== undefined) name.append(el('span', 'tag', 'bot ' + (p.bot ? 'liked' : 'passed')));
+  else name.append(el('span', 'tag', 'unrated'));
+  info.append(name);
+  const bits = [p.source];
+  if (p.score !== null) bits.push('model ' + Math.round(p.score));
+  if (p.match !== null) bits.push(`ideal ${pct(p.match)} (${p.matched.length}/${p.traits_known})`);
+  info.append(el('div', 'hint', bits.join(' · ')));
+  if (p.matched.length) { const m = el('div', 'hint', '✓ ' + p.matched.join(', ')); m.style.marginTop = '4px'; info.append(m); }
+  c.append(info);
+  return c;
+}
+
+function render() {
+  const s = data.summary, m = $('main'); m.replaceChildren();
+  if ($('source').options.length === 1) {
+    /* sources come from /api/insights summary only; offer the common ones lazily */
+    fetch('/api/insights').then(r => r.json()).then(d => Object.keys(d.summary.sources || {}).sort().forEach(k => { const o = el('option', '', k); o.value = k; $('source').append(o); }));
+  }
+  if (!s.rated) { m.append(el('div', 'empty', 'No ratings yet: rate some profiles and come back.')); return; }
+
+  const top = el('div', 'panel');
+  top.append(el('h2', '', 'Your ideal, in short'));
+  top.append(el('div', 'lead', data.description ? data.description[0].toUpperCase() + data.description.slice(1) : 'Nothing clear enough yet to describe.'));
+  top.append(el('div', 'hint', `Built from ${s.rated} rated profiles (you liked ${pct(s.baseline)} of them). A value is only listed when at least ${s.min_n} profiles back it and your like rate for it is clearly or at least one standard error above your average. ${s.visual_note || ''}`));
+  m.append(top);
+
+  const looks = data.looks.filter(e => e.pick), basics = data.basics.filter(e => e.pick);
+  if (looks.length || basics.length) {
+    const p = el('div', 'panel'); p.append(el('h2', '', 'Breakdown'));
+    p.append(el('div', 'hint', 'Percentage = the share of profiles with that trait you liked. Looks come from noisy CLIP photo guesses: directional, not facts.'));
+    const g = el('div', 'traits'); [...looks, ...basics].forEach(e => g.append(traitBox(e))); p.append(g);
+    const avoid = [...data.looks, ...data.basics].flatMap(e => e.avoid.map(a => `${e.title}: ${a.label === 'shows it' ? 'yes' : a.label} (${pct(a.rate)})`));
+    if (avoid.length) { p.append(el('h2', '', 'Clearly not for you')); p.firstChild; const c = el('div', 'chips'); avoid.forEach(a => c.append(el('span', 'chip down', a))); p.append(c); }
+    if (data.undecided.length) { const u = el('div', 'hint', 'No clear preference (or too little data): ' + data.undecided.join(', ')); u.style.marginTop = '10px'; p.append(u); }
+    m.append(p);
+  }
+
+  const pe = data.personality;
+  if (pe.likes.length || pe.avoids.length) {
+    const p = el('div', 'panel'); p.append(el('h2', '', 'Personality and lifestyle (from their profile text)'));
+    const c1 = el('div', 'chips'); pe.likes.forEach(r => c1.append(el('span', 'chip up', `${r.title}: ${r.label} · ${pct(r.rate)} (n=${r.n})`))); p.append(c1);
+    const c2 = el('div', 'chips'); pe.avoids.forEach(r => c2.append(el('span', 'chip down', `${r.title}: ${r.label} · ${pct(r.rate)} (n=${r.n})`))); p.append(c2);
+    m.append(p);
+  }
+
+  if (data.image_prompt) {
+    const p = el('div', 'panel'); p.append(el('h2', '', 'Prompt for an image generator'));
+    p.append(el('div', 'hint', 'Claude cannot generate images. Paste this into an image model (Gemini/Imagen, GPT-image, Flux, Stable Diffusion). Nothing is sent from here. It will produce a generic composite, not a real person, and only uses the looks above.'));
+    const t = el('textarea'); t.readOnly = true; t.value = data.image_prompt + (data.negative_prompt ? '\n\nAvoid: ' + data.negative_prompt : ''); p.append(t);
+    const b = el('button', 'sm', 'Copy'); b.onclick = () => { navigator.clipboard.writeText(t.value); b.textContent = 'Copied'; }; p.append(b);
+    m.append(p);
+  }
+
+  const p = el('div', 'panel');
+  p.append(el('h2', '', 'Closest profiles you have already seen'));
+  const sel = el('select'); [['match', 'Most ideal traits'], ['score', 'Highest model score']].forEach(([v, t]) => { const o = el('option', '', t); o.value = v; sel.append(o); });
+  sel.value = sortBy; sel.onchange = () => { sortBy = sel.value; render(); };
+  p.append(el('div', 'hint', data.model_active ? 'Includes profiles you never rated. The model score needs a trained model; the ideal match counts how many picked looks the profile has, among the ones the detector could judge (at least 3).' : 'No trained model yet, so only the ideal match is shown (train one for model scores).'), sel);
+  const list = data.matches.filter(x => x[sortBy] !== null).sort((a, b) => b[sortBy] - a[sortBy] || (b.score || 0) - (a.score || 0)).slice(0, 24);
+  if (!list.length) p.append(el('div', 'empty', 'No profiles to show yet.'));
+  else { const g = el('div', 'grid'); g.style.marginTop = '10px'; list.forEach(x => g.append(profCard(x))); p.append(g); }
+  m.append(p);
+}
+
+$('source').addEventListener('change', load);
+$('fake').addEventListener('change', load);
+load();
+</script>
+</body>
+</html>

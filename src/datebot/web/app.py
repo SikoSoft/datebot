@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from datebot import config, db, filters, ingest, insights, model
+from datebot import config, db, filters, ideal, ingest, insights, model
 
 STATIC = Path(__file__).parent / "static"
 
@@ -150,6 +150,16 @@ def create_app() -> FastAPI:
     @app.get("/insights")
     def insights_page():
         return FileResponse(STATIC / "insights.html")
+
+    @app.get("/api/ideal")
+    def get_ideal(source: str | None = None, fake_threshold: int | None = None, model_name: str = "default"):
+        """Your preferred value per attribute, an image-generator prompt, and the seen profiles closest to it."""
+        with db.session() as conn:
+            return ideal.build(conn, source or None, fake_threshold=fake_threshold, model_name=model_name)
+
+    @app.get("/ideal")
+    def ideal_page():
+        return FileResponse(STATIC / "ideal.html")
 
     @app.get("/api/filters")
     def get_filters():

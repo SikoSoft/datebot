@@ -147,3 +147,9 @@ def test_reuploading_same_photos_returns_existing_profile(client):
     again = client.post("/api/profiles", files=[("photos", ("b.png", png(), "image/png"))]).json()
     other = client.post("/api/profiles", files=[("photos", ("c.png", png("red"), "image/png"))]).json()
     assert again["id"] == first["id"] and other["id"] != first["id"]
+
+
+def test_ideal_endpoint_and_page(client):
+    assert client.get("/ideal").status_code == 200
+    body = client.get("/api/ideal").json()
+    assert body["looks"] == [] and body["matches"] == [] and body["model_active"] is False
