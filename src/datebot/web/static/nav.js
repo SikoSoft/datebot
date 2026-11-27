@@ -6,6 +6,7 @@
     ['/review', 'Review'],
     ['/browse', 'Browse'],
     ['/insights', 'Insights'],
+    ['/wants', 'Wants'],
     ['/ideal', 'Ideal'],
   ];
   const css = `
