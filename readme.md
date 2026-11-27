@@ -238,7 +238,7 @@ Needs the `phone` extra: `uv sync --extra phone`.
 
 1. `datebot capture hinge` (listens on port 8080; `--port` to change; `--verbose` lists every request the phone makes, for debugging). Leave it running.
 2. Use Hinge normally on the phone. Profiles (photos, prompts, job/hometown, height) are stored; your likes ("note")
-   and passes ("skip") become labeled ratings. Nothing is ever sent by datebot.
+   and passes ("skip") become labeled ratings. Nothing is ever sent by datebot. The one change it makes: it drops the `If-None-Match` / `If-Modified-Since` headers from the feed and profile requests, so Hinge sends full profiles instead of "304 unchanged" (cached cards are otherwise invisible to the proxy and your swipes on them are lost).
 3. Ctrl+C to stop; it prints what was recorded. Remember to turn the phone's proxy off afterwards.
 
 `datebot capture hinge-replay data/hinge-probe` runs an earlier probe dump through the same parser (dry run; add

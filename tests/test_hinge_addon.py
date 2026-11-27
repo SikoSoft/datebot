@@ -45,3 +45,21 @@ def test_tls_failures_name_the_host(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert f"upstream TLS failed for {hinge.HOST} (Hinge API): Certificate verify failed" in out
     assert "phone TLS failed for img.example: client does not trust" in out
+
+
+def test_conditional_headers_are_dropped_only_for_feed_and_profile_requests(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    addon = importlib.import_module("datebot.capture.hinge_addon")
+    cap = addon.HingeCapture(Recorder(fetch=lambda u: b"", source="hinge", db_path=str(tmp_path / "t.db")))
+
+    def req(path, host=hinge.HOST):
+        return SimpleNamespace(request=SimpleNamespace(
+            pretty_host=host, path=path, headers={"if-none-match": "x", "if-modified-since": "y", "accept": "z"}))
+
+    for path in ("/rec/v2", hinge.PATH_USER + "?a=1", hinge.PATH_CONTENT):
+        f = req(path)
+        cap.request(f)
+        assert f.request.headers == {"accept": "z"}
+    for f in (req("/standouts/v3"), req("/rec/v2", host="other.example")):
+        cap.request(f)
+        assert "if-none-match" in f.request.headers

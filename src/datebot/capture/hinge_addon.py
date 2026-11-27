@@ -1,7 +1,9 @@
 """mitmproxy addon: record Hinge profiles and your own swipes while you use the app on your iPhone.
 
-Run it with `datebot capture hinge` (needs the `phone` extra and the phone set up as in the readme). Read-only: it
-never modifies, replays or sends anything; you swipe in the app yourself. Profiles are stored locally with their
+Run it with `datebot capture hinge` (needs the `phone` extra and the phone set up as in the readme). It never
+replays or sends anything and never touches a response; you swipe in the app yourself. The one change: conditional
+headers (If-None-Match / If-Modified-Since) are dropped from the feed and profile requests, so the server sends full
+profiles instead of 304 "unchanged" (the app otherwise shows cached cards the proxy never sees). Profiles are stored locally with their
 photos; your swipes become `app` ratings (a like = "note", a pass = "skip", see capture/hinge.py).
 Photos are downloaded in a background thread so the phone's traffic is never held up.
 Each swipe also stores a behaviour interaction. Through a proxy only network timing is visible, so that is just the
@@ -19,6 +21,8 @@ from datebot.capture import hinge
 from datebot.capture.recorder import Recorder
 
 SOURCE = "hinge"
+FRESH_PATHS = {"/rec/v2", hinge.PATH_USER, hinge.PATH_CONTENT}
+CONDITIONAL_HEADERS = ("if-none-match", "if-modified-since")
 
 
 def prompts_cache_path():
@@ -53,6 +57,12 @@ class HingeCapture:
                 print(f"[hinge] skipped one event: {type(e).__name__}: {e}")
             finally:
                 self._events.task_done()
+
+    def request(self, flow) -> None:
+        if flow.request.pretty_host != hinge.HOST or flow.request.path.split("?")[0] not in FRESH_PATHS:
+            return
+        for header in CONDITIONAL_HEADERS:
+            flow.request.headers.pop(header, None)
 
     def response(self, flow) -> None:
         if flow.request.pretty_host != hinge.HOST:

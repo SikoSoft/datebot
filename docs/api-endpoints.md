@@ -69,6 +69,7 @@ the profile fields and the photos/prompts, which must be joined by `userId` (`Hi
   `"skip"` = pass, no `content` (**Verified**). Any other value (a like without a comment, a rose, ...) has not been
   seen: datebot ignores it and reports it as an "unrecognised rating".
 - Response 200: `{limit: {likes: int, superlikes: int, snoozes: int, skipUndos: int}}` for a like (remaining quota); `{limit: null}` for a pass.
+- A swipe on a profile datebot never captured is counted but not stored (nothing to rate). Hinge answers `POST /rec/v2` with 304 and shows cached cards, so the addon drops `If-None-Match` / `If-Modified-Since` from `/rec/v2`, `/user/v3/public` and `/content/v2/public` requests to get full responses.
 - Only a 200 is recorded as a rating. Order matters: the profile is stored before its swipe.
 
 **`POST /flag/textreview`** — **Verified** — moderation check run on your comment before a like is sent.
