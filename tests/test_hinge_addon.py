@@ -78,4 +78,27 @@ def test_each_profile_and_swipe_prints_a_line(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "stored profile" in out and "(1 new this run)" in out
     assert "RECORDED PASS on" in out and "(1 swipe(s) this run)" in out
-    assert "NOT recorded: LIKE on a profile datebot never captured" in out
+    assert "NOT recorded: LIKE on profile ghost that datebot never captured" in out
+
+
+def test_feed_diagnostics_explain_missing_profiles(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    addon = importlib.import_module("datebot.capture.hinge_addon")
+    rec = Recorder(fetch=lambda u: png() + u.encode(), source="hinge", db_path=str(tmp_path / "t.db"))
+    cap = addon.HingeCapture(rec)
+    feed = json.dumps({"feeds": [{"subjects": [{"subjectId": "u1"}, {"subjectId": "u2"}]}]})
+    cap.response(flow("/rec/v2", feed))
+    cap.response(flow(hinge.PATH_USER, json.dumps(users("u1")), request=json.dumps({"ids": ["u1", "u2"]})))
+    cap.response(flow(hinge.PATH_RATE, "{}", json.dumps({"subjectId": "u2", "rating": "skip"}), t_req=1.0))
+    cap.response(flow(hinge.PATH_RATE, "{}", json.dumps({"subjectId": "zz", "rating": "skip"}), t_req=2.0))
+    cap._events.join()
+    out = capsys.readouterr().out
+    assert "feed offers 2 profile(s): 0 already stored, 2 not yet" in out
+    assert "app requested 2 profile record(s), got 1" in out
+    assert "profile u2 that datebot never captured (was offered by the feed this run" in out
+    assert "profile zz that datebot never captured (was never offered by the feed this run" in out
+
+
+def test_parse_rec_and_requested_ids():
+    assert hinge.parse_rec({"feeds": [{"subjects": [{"subjectId": "a"}, {"x": 1}]}]}) == ["a"]
+    assert hinge.parse_rec("garbage") == [] and hinge.parse_requested_ids({"ids": ["a", "b"]}) == ["a", "b"]

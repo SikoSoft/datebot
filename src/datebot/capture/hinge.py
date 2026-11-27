@@ -28,6 +28,7 @@ HOST = "prod-api.hingeaws.net"
 PATH_PROMPTS = "/prompts"
 PATH_USER = "/user/v3/public"
 PATH_CONTENT = "/content/v2/public"
+PATH_REC = "/rec/v2"
 PATH_RATE = "/rate/v2/initiate"
 RATING_LIKE, RATING_PASS = "note", "skip"
 MAX_PHOTOS = 6
@@ -114,6 +115,21 @@ class Event:
     profile: CapturedProfile | None = None
     swipe: Swipe | None = None
     at: float | None = None  # epoch seconds, stamped by the live capture (a swipe's is when the request started)
+
+
+def parse_rec(body) -> list[str]:
+    """Subject ids the feed (`POST /rec/v2`) offers: `{feeds: [{subjects: [{subjectId}]}]}`. Verified shape."""
+    data = _loads(body)
+    feeds = data.get("feeds") if isinstance(data, dict) else None
+    return [str(x["subjectId"]) for f in feeds or [] if isinstance(f, dict)
+            for x in f.get("subjects") or [] if isinstance(x, dict) and x.get("subjectId")]
+
+
+def parse_requested_ids(body) -> list[str]:
+    """Ids the app asked for in `POST /user/v3/public` or `/content/v2/public`: `{ids: [...]}`. Verified shape."""
+    data = _loads(body)
+    ids = data.get("ids") if isinstance(data, dict) else None
+    return [str(i) for i in ids or []]
 
 
 class HingeSession:

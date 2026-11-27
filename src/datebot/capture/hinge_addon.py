@@ -40,6 +40,7 @@ class HingeCapture:
     def __init__(self, recorder: Recorder | None = None) -> None:
         self.recorder = recorder or Recorder(source=SOURCE, tracker=InteractionTracker(SOURCE, "iphone-proxy"))
         self.session = hinge.HingeSession(load_prompts())
+        self.offered: set[str] = set()
         self._events: queue.Queue = queue.Queue()
         self._worker = threading.Thread(target=self._work, daemon=True)
         self._worker.start()
@@ -61,6 +62,21 @@ class HingeCapture:
             finally:
                 self._events.task_done()
 
+    def _diagnose(self, path: str, status: int, request_text: str, response_text: str) -> None:
+        """One-line facts about the feed, so a missing profile is explained rather than silent."""
+        if path == hinge.PATH_REC and status == 200:
+            ids = hinge.parse_rec(response_text)
+            with db.session(self.recorder.db_path) as conn:
+                stored = sum(db.find_profile_id(conn, SOURCE, i) is not None for i in ids)
+            self.offered.update(ids)
+            print(f"[hinge] feed offers {len(ids)} profile(s): {stored} already stored, {len(ids) - stored} not yet", flush=True)
+        elif path in (hinge.PATH_USER, hinge.PATH_CONTENT):
+            asked = len(hinge.parse_requested_ids(request_text))
+            got = len(hinge.parse_users(response_text) if path == hinge.PATH_USER else hinge.parse_contents(response_text))
+            print(f"[hinge] app requested {asked} {'profile' if path == hinge.PATH_USER else 'content'} record(s), got {got}", flush=True)
+        elif path == hinge.PATH_REC and status == 304:
+            print("[hinge] feed unchanged (304): the app is showing profiles it already has", flush=True)
+
     def _swipe(self, event) -> None:
         swipe, c = event.swipe, self.recorder.counts
         recorded = self.recorder.record_swipe(swipe, at_ms=None if event.at is None else event.at * 1000)
@@ -71,8 +87,9 @@ class HingeCapture:
                 row = conn.execute("SELECT name FROM profiles WHERE id = ?", (pid,)).fetchone()
             print(f"[hinge] RECORDED {verdict} on {row['name']} ({c.swipes} swipe(s) this run)", flush=True)
         else:
-            print(f"[hinge] NOT recorded: {verdict} on a profile datebot never captured "
-                  f"({c.unknown_swipes} such this run)", flush=True)
+            seen = "was offered by the feed this run" if swipe.user_id in self.offered else "was never offered by the feed this run"
+            print(f"[hinge] NOT recorded: {verdict} on profile {swipe.user_id} that datebot never captured "
+                  f"({seen}; {c.unknown_swipes} such this run)", flush=True)
 
     def request(self, flow) -> None:
         if flow.request.pretty_host != hinge.HOST or flow.request.path.split("?")[0] not in FRESH_PATHS:
@@ -83,6 +100,11 @@ class HingeCapture:
     def response(self, flow) -> None:
         if flow.request.pretty_host != hinge.HOST:
             return
+        try:
+            self._diagnose(flow.request.path.split("?")[0], flow.response.status_code,
+                           flow.request.get_text(strict=False), flow.response.get_text(strict=False))
+        except Exception as e:
+            print(f"[hinge] diagnostics failed: {type(e).__name__}: {e}")
         try:
             events = self.session.handle(
                 flow.request.path.split("?")[0], flow.response.status_code,
