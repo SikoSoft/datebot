@@ -33,6 +33,13 @@
   .why .num { width:50px; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
   .nav { display:flex; gap:8px; align-items:center; justify-content:center; margin:0 0 12px; }
   #pos { min-width:90px; text-align:center; }
+  .photos img { cursor:zoom-in; }
+  #lb { position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:50; display:none; align-items:center; justify-content:center; }
+  #lb.open { display:flex; }
+  #lb img { max-width:94vw; max-height:92vh; object-fit:contain; border-radius:6px; }
+  #lb button { position:absolute; background:rgba(255,255,255,.15); color:#fff; border:0; border-radius:99px; width:44px; height:44px; font-size:22px; cursor:pointer; }
+  #lb .x { top:14px; right:14px; } #lb .l { left:14px; top:50%; } #lb .r { right:14px; top:50%; }
+  #lb .ct { position:absolute; bottom:14px; left:0; right:0; text-align:center; color:#ddd; font-size:13px; }
 </style>
 </head>
 <body>
@@ -40,6 +47,7 @@
   <h1>Browse (read-only)</h1>
   <span><a class="sm" href="/review">Review</a> <a class="sm" href="/insights">Insights</a> <a class="sm" href="/">← Rate profiles</a></span>
 </header>
+<div id="lb"><button class="x" aria-label="Close">✕</button><button class="l" aria-label="Previous photo">‹</button><img id="lbimg" alt=""><button class="r" aria-label="Next photo">›</button><div class="ct" id="lbct"></div></div>
 <main>
   <div class="bar">
     <select id="sort">
@@ -56,7 +64,7 @@
     <select id="source"><option value="">All apps</option></select>
     <input id="jump" type="number" min="1" placeholder="Go to #" style="width:90px">
   </div>
-  <div class="hint">Open a profile directly with /browse#ID. Nothing here rates or changes anything. ← / → (or J / K) move between profiles.</div>
+  <div class="hint">Open a profile directly with /browse#ID. Nothing here rates or changes anything. ← / → (or J / K) move between profiles. Click a photo to enlarge it.</div>
   <div class="nav">
     <button class="sm" id="prev">← Prev</button><span id="pos" class="hint"></span><button class="sm" id="next">Next →</button>
   </div>
@@ -103,7 +111,7 @@ async function show() {
   if (list[idx].id !== id) return;  // user moved on while loading
   const p = d.profile, card = el('div', 'card');
   const photos = el('div', 'photos');
-  for (const src of p.photos) { const im = el('img'); im.src = src; im.loading = 'lazy'; photos.append(im); }
+  p.photos.forEach((src, n) => { const im = el('img'); im.src = src; im.loading = 'lazy'; im.title = 'Click to enlarge'; im.onclick = () => openLb(p.photos, n); photos.append(im); });
   card.append(photos);
   const top = el('div', 'top');
   top.append(el('h2', '', `${p.name || '(no name)'}${p.age ? ', ' + p.age : ''}`));
@@ -138,12 +146,28 @@ function why(w) {
   return box;
 }
 
+let lbPhotos = [], lbAt = 0;
+function openLb(photos, at) { lbPhotos = photos; lbAt = at; $('lb').classList.add('open'); drawLb(); }
+function drawLb() { $('lbimg').src = lbPhotos[lbAt]; $('lbct').textContent = `${lbAt + 1} / ${lbPhotos.length}`; }
+const lbStep = d => { lbAt = (lbAt + d + lbPhotos.length) % lbPhotos.length; drawLb(); };
+const closeLb = () => $('lb').classList.remove('open');
+$('lb').querySelector('.x').onclick = closeLb;
+$('lb').querySelector('.l').onclick = e => { e.stopPropagation(); lbStep(-1); };
+$('lb').querySelector('.r').onclick = e => { e.stopPropagation(); lbStep(1); };
+$('lb').onclick = e => { if (e.target.id !== 'lbimg') closeLb(); else lbStep(1); };
+
 const step = d => { if (list.length) { idx = (idx + d + list.length) % list.length; show(); } };
 $('prev').onclick = () => step(-1);
 $('next').onclick = () => step(1);
 $('jump').onchange = () => { const n = parseInt($('jump').value, 10); if (n >= 1 && n <= list.length) { idx = n - 1; show(); } };
 for (const id of ['sort', 'state', 'source']) $(id).onchange = () => { history.replaceState(null, '', location.pathname); apply(); };
 document.addEventListener('keydown', e => {
+  if ($('lb').classList.contains('open')) {
+    if (e.key === 'Escape') closeLb();
+    if (e.key === 'ArrowRight') lbStep(1);
+    if (e.key === 'ArrowLeft') lbStep(-1);
+    return;  // while a photo is open the arrows move between its photos, not profiles
+  }
   if (['INPUT', 'SELECT'].includes(e.target.tagName)) return;
   if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'k') step(1);
   if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'j') step(-1);
