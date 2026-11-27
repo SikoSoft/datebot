@@ -135,6 +135,17 @@ because Tinder opens with a near-universal "like" that says nothing about taste 
 
 ---
 
+## Profile links (UI "Open in app")
+
+`web/links.py` builds a link from `source` + stored `external_id`; the UI shows it only when one exists.
+- Tinder `https://tinder.com/app/profile/{_id}`: **Unverified**. Captured `recs/core` users (22 fields) carry no username
+  or share slug, only `_id`; Tinder's real share links use a separate slug we have not seen. May not open for people you
+  have not matched with.
+- Badoo `https://badoo.com/profile/{user_id}`: **Unverified** for unmatched people. No URL fields appear in captured traffic.
+- Hinge: none. No web profiles or public share URL exist.
+
+---
+
 ## Adding a new app or endpoint
 
 1. Map raw traffic first (`capture/discover.py` for web, `capture hinge-probe` for phones). Verify field names from it.
