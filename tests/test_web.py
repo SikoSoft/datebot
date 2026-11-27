@@ -9,9 +9,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 from datebot.web.app import create_app  # noqa: E402
 
 
-def png() -> bytes:
+def png(color: str = "blue") -> bytes:
     buf = io.BytesIO()
-    Image.new("RGB", (8, 8), "blue").save(buf, "PNG")
+    Image.new("RGB", (8, 8), color).save(buf, "PNG")
     return buf.getvalue()
 
 
@@ -55,8 +55,8 @@ def test_index_served(client):
 
 
 def test_filters_hide_profiles_from_queue(client):
-    for age in (19, 30):
-        client.post("/api/profiles", files=[("photos", ("a.png", png(), "image/png"))], data={"age": age})
+    for age, color in ((19, "red"), (30, "green")):
+        client.post("/api/profiles", files=[("photos", ("a.png", png(color), "image/png"))], data={"age": age})
     assert client.get("/api/filters").json()["min_age"] is None
 
     r = client.put("/api/filters", json={"min_age": 21}).json()
@@ -79,8 +79,8 @@ def test_review_queue_audit_and_feedback(client):
     assert empty["auto"] == [] and empty["pending"] == [] and empty["summary"]["auto"] == 0
 
     ids = []
-    for name in ("Ann", "Bea", "Cy"):
-        r = client.post("/api/profiles", files=[("photos", (f"{name}.png", png(), "image/png"))], data={"name": name})
+    for name, color in (("Ann", "red"), ("Bea", "green"), ("Cy", "yellow")):
+        r = client.post("/api/profiles", files=[("photos", (f"{name}.png", png(color), "image/png"))], data={"name": name})
         ids.append(r.json()["id"])
     with db.session() as conn:
         db.add_rating(conn, ids[0], True, origin="auto")
@@ -140,3 +140,10 @@ def test_browse_lists_profiles_without_rating_anything(client):
     assert client.get("/api/browse/999").status_code == 404
     assert client.get("/api/next").json()["stats"]["rated"] == 0   # browsing rated nothing
     assert client.get("/browse").status_code == 200
+
+
+def test_reuploading_same_photos_returns_existing_profile(client):
+    first = client.post("/api/profiles", files=[("photos", ("a.png", png(), "image/png"))], data={"name": "Ann"}).json()
+    again = client.post("/api/profiles", files=[("photos", ("b.png", png(), "image/png"))]).json()
+    other = client.post("/api/profiles", files=[("photos", ("c.png", png("red"), "image/png"))]).json()
+    assert again["id"] == first["id"] and other["id"] != first["id"]

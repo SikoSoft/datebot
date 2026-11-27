@@ -210,7 +210,8 @@ def create_app() -> FastAPI:
                 f.write_bytes(await up.read())
                 files.append(f)
             with db.session() as conn:
-                pid = ingest.add_from_files(conn, files, source, name=name or None, age=age, bio=bio or None)
+                pid = ingest.add_from_files(conn, files, source, external_id=ingest.photos_external_id(files),
+                                            name=name or None, age=age, bio=bio or None)
                 return {"id": pid, "stats": _stats(conn)}
 
     @app.post("/api/train")

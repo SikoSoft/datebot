@@ -10,6 +10,12 @@ from datebot import config, db
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 
 
+def photos_external_id(files: list[Path]) -> str:
+    """Stable id from photo contents (order-independent), so re-uploading the same photos is the same profile."""
+    digests = sorted(hashlib.sha256(f.read_bytes()).hexdigest() for f in files)
+    return "photos:" + hashlib.sha256("".join(digests).encode()).hexdigest()[:24]
+
+
 def store_photo(src: Path) -> str:
     """Copy a photo into the data dir under a content hash, so the library is self-contained and deduped."""
     digest = hashlib.sha256(src.read_bytes()).hexdigest()[:20]
