@@ -94,9 +94,13 @@ class Profile:
     extra: dict
 
 
+BUSY_TIMEOUT_S = 30  # wait for a competing writer instead of failing "database is locked" after 5s
+
+
 def connect(path: str | None = None) -> sqlite3.Connection:
-    conn = sqlite3.connect(path or str(config.db_path()))
+    conn = sqlite3.connect(path or str(config.db_path()), timeout=BUSY_TIMEOUT_S)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")  # readers never block on a writer (UI polls while capture/retrain write)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     _migrate(conn)
