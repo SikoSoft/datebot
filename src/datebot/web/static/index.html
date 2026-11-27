@@ -237,7 +237,11 @@ async function upload(files) {
     if (!current) await load(); else renderStatsOnly();
   } catch (e) { say(e.message); }
 }
-async function renderStatsOnly() { renderStats(await api('/api/stats')); }
+async function renderStatsOnly() {
+  const s = await api('/api/stats' + (current ? `?profile_id=${current.id}` : ''));
+  renderStats(s);
+  if (s.profile_rated && !busy) { await load(); say('That profile was rated elsewhere: moved on.'); }  // e.g. you swiped it in Tinder
+}
 // Ratings also arrive from outside this page (capture sessions): refresh the counts while the tab is visible.
 setInterval(() => { if (!document.hidden) renderStatsOnly().catch(() => {}); }, 3000);
 
