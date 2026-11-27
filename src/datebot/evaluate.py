@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from sklearn.base import clone
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
@@ -35,15 +36,17 @@ def safe_auc(y_true: np.ndarray, scores: np.ndarray) -> float | None:
     return float(roc_auc_score(y_true, scores)) if len(set(y_true.tolist())) == 2 else None
 
 
-def oof_scores(X: np.ndarray, y: np.ndarray, repeats: int = 3, folds: int = 5, seed: int = 0) -> np.ndarray:
-    """Out-of-fold P(like) per profile, averaged over `repeats` differently-shuffled CV runs."""
+def oof_scores(X: np.ndarray, y: np.ndarray, repeats: int = 3, folds: int = 5, seed: int = 0, clf=None) -> np.ndarray:
+    """Out-of-fold P(like) per profile, averaged over `repeats` differently-shuffled CV runs.
+    `clf` defaults to the real model's classifier."""
     check_enough(y)
     folds = max(2, min(folds, _minority(y)))
     total = np.zeros(len(y))
+    base = clf if clf is not None else model.make_classifier()
     for r in range(repeats):
         for train, test in StratifiedKFold(folds, shuffle=True, random_state=seed + r).split(X, y):
-            clf = clone(model.make_classifier()).fit(X[train], y[train])
-            total[test] += clf.predict_proba(X[test])[:, 1]
+            fitted = clone(base).fit(X[train], y[train])
+            total[test] += fitted.predict_proba(X[test])[:, 1]
     return total / repeats
 
 
@@ -74,10 +77,12 @@ def feature_blocks(X: np.ndarray) -> dict[str, np.ndarray | None]:
 
 
 def ablation(X: np.ndarray, y: np.ndarray, **kw) -> dict[str, float | None]:
-    """Cross-validated AUC using photos only, text only, and both."""
+    """Cross-validated AUC using photos only, text only, and both. Uses a generic logistic regression on each
+    block set (not the real model, which only reads the photo average), so the sets are comparable."""
     out: dict[str, float | None] = {}
     for name, block in feature_blocks(X).items():
-        out[name] = None if block is None else safe_auc(y, oof_scores(block, y, **kw))
+        out[name] = None if block is None else safe_auc(
+            y, oof_scores(block, y, clf=LogisticRegression(C=0.5, class_weight="balanced", max_iter=2000), **kw))
     return out
 
 

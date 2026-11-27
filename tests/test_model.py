@@ -76,17 +76,19 @@ def add_with_text(conn, text_vec, rng, liked):
     return pid
 
 
-def test_learns_from_bio_text_when_photos_are_noise(conn):
+def test_classifier_reads_only_the_photo_average_not_text(conn):
+    """Cross-validation showed text/best/lead blocks do not help (text alone AUC ~0.58), so the model
+    ignores them: a bio that perfectly predicts the label must not move the score."""
     rng = np.random.default_rng(1)
     liked_bio, passed_bio = np.ones(8), -np.ones(8)
     for _ in range(15):
         add_with_text(conn, liked_bio, rng, True)
         add_with_text(conn, passed_bio, rng, False)
     trained = model.train(conn, EMBED)
-    assert trained.cv_accuracy > 0.9
+    assert trained.cv_accuracy < 0.8  # photos are noise, so nothing to learn without the text
     hi = add_with_text(conn, liked_bio, rng, None)
-    lo = add_with_text(conn, passed_bio, rng, None)
-    assert model.score_profile(conn, trained, hi) > 80 > 20 > model.score_profile(conn, trained, lo)
+    emb = db.profile_embeddings(conn, hi, EMBED)
+    assert model.score(trained, emb, db.text_embedding(conn, hi, EMBED)) == model.score(trained, emb, None)
 
 
 def test_profiles_without_bio_still_score(conn):

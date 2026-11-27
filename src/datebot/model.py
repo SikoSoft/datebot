@@ -7,13 +7,15 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import normalize
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 from datebot import config, db, filters as hard_filters
 
 MIN_PER_CLASS = 3  # need at least this many likes and passes to train
-FEATURE_VERSION = 3  # bump when featurize() changes; older saved models are ignored and must be retrained
+FEATURE_VERSION = 4  # bump when featurize() changes; older saved models are ignored and must be retrained
 
 
 def featurize(embeddings: np.ndarray, text_embedding: np.ndarray | None = None) -> np.ndarray:
@@ -37,9 +39,39 @@ def featurize(embeddings: np.ndarray, text_embedding: np.ndarray | None = None) 
     return np.concatenate([embeddings.mean(axis=0), embeddings.max(axis=0), embeddings[0], text, [has_text]]).astype(np.float32)
 
 
+class PhotoAverageLR(ClassifierMixin, BaseEstimator):
+    """Logistic regression on the L2-normalised mean photo embedding only.
+
+    Measured with cross-validation: the extra blocks of `featurize` (best photo, lead photo, text) did not
+    improve AUC (text alone is ~0.58), so the classifier ignores them. They stay in the feature vector so
+    `datebot eval` can keep comparing photos with text, and so nothing stored is thrown away.
+    """
+
+    def __init__(self, C: float = 4.0):
+        self.C = C
+
+    def _photo_average(self, X: np.ndarray) -> np.ndarray:
+        d = (X.shape[1] - 1) // 5  # featurize layout: 5 blocks of `d` plus the has_text flag
+        return normalize(X[:, :d])
+
+    def fit(self, X, y):
+        self.lr_ = LogisticRegression(C=self.C, class_weight="balanced", max_iter=3000).fit(self._photo_average(X), y)
+        self.classes_ = self.lr_.classes_
+        return self
+
+    def decision_function(self, X):
+        return self.lr_.decision_function(self._photo_average(X))
+
+    def predict_proba(self, X):
+        return self.lr_.predict_proba(self._photo_average(X))
+
+    def predict(self, X):
+        return self.lr_.predict(self._photo_average(X))
+
+
 @dataclass
 class Trained:
-    clf: LogisticRegression
+    clf: PhotoAverageLR
     embed_model: str
     n_samples: int
     n_likes: int
@@ -78,9 +110,9 @@ def training_set(conn: sqlite3.Connection, embed_model: str) -> tuple[np.ndarray
     return X, y
 
 
-def make_classifier() -> LogisticRegression:
+def make_classifier() -> PhotoAverageLR:
     """The classifier used for training and for evaluation, so both measure the same thing."""
-    return LogisticRegression(C=0.5, class_weight="balanced", max_iter=2000)
+    return PhotoAverageLR()
 
 
 def train(conn: sqlite3.Connection, embed_model: str, name: str = "default") -> Trained:
@@ -137,19 +169,16 @@ def score_profile(conn: sqlite3.Connection, trained: Trained, profile_id: int) -
     return score(trained, emb, db.text_embedding(conn, profile_id, trained.embed_model))
 
 
-BLOCKS = ["photo average", "best photo", "lead photo", "text average", "best text line", "has text"]
+BLOCKS = ["photo average"]
 
 
 def explain_blocks(trained: Trained, embeddings: np.ndarray, text_embedding: np.ndarray | None = None) -> dict:
-    """Why a profile got its score. The classifier is linear, so the log-odds split exactly into one
-    contribution per feature block (positive pushes towards like) plus the intercept."""
-    x = featurize(embeddings, text_embedding)
-    w = trained.clf.coef_[0]
-    dim = (len(x) - 1) // 5
-    edges = [0, dim, 2 * dim, 3 * dim, 4 * dim, 5 * dim, 5 * dim + 1]  # one slice per name in BLOCKS
-    contributions = [float(w[lo:hi] @ x[lo:hi]) for lo, hi in zip(edges, edges[1:])]
-    return {"intercept": float(trained.clf.intercept_[0]),
-            "factors": [{"name": n, "logit": c} for n, c in zip(BLOCKS, contributions)]}
+    """Why a profile got its score. The classifier is linear in the normalised photo average, so the log-odds
+    are exactly the intercept plus one photo-average contribution."""
+    x = trained.clf._photo_average(featurize(embeddings, text_embedding).reshape(1, -1))[0]
+    w = trained.clf.lr_.coef_[0]
+    return {"intercept": float(trained.clf.lr_.intercept_[0]),
+            "factors": [{"name": BLOCKS[0], "logit": float(w @ x)}]}
 
 
 def most_uncertain(
