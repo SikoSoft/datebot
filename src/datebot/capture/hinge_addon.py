@@ -107,6 +107,11 @@ class HingeCapture:
     def response(self, flow) -> None:
         if flow.request.pretty_host != hinge.HOST:
             return
+        path = flow.request.path.split("?")[0]
+        if path in FRESH_PATHS:
+            h = flow.response.headers
+            shown = {k: h[k] for k in ("cache-control", "etag", "expires", "last-modified", "age", "date") if k in h}
+            print(f"[hinge] {path} {flow.response.status_code} headers: {shown or 'no cache headers'}", flush=True)
         try:
             self._diagnose(flow.request.path.split("?")[0], flow.response.status_code,
                            flow.request.get_text(strict=False), flow.response.get_text(strict=False))

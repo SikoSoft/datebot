@@ -14,7 +14,8 @@ def flow(path, response, request="{}", t_req=0.0, t_end=0.0):
     return SimpleNamespace(
         request=SimpleNamespace(pretty_host=hinge.HOST, path=path, timestamp_start=t_req,
                                 get_text=lambda strict=False: request),
-        response=SimpleNamespace(status_code=200, timestamp_end=t_end, get_text=lambda strict=False: response))
+        response=SimpleNamespace(status_code=200, timestamp_end=t_end, headers={"etag": "abc"},
+                                 get_text=lambda strict=False: response))
 
 
 def test_swipe_dwell_comes_from_network_timestamps(tmp_path, monkeypatch):
@@ -103,3 +104,11 @@ def test_feed_diagnostics_explain_missing_profiles(tmp_path, monkeypatch, capsys
 def test_parse_rec_and_requested_ids():
     assert hinge.parse_rec({"feeds": [{"subjects": [{"subjectId": "a"}, {"x": 1}]}]}) == ["a"]
     assert hinge.parse_rec("garbage") == [] and hinge.parse_requested_ids({"ids": ["a", "b"]}) == ["a", "b"]
+
+
+def test_cache_headers_are_printed_for_feed_paths(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DATEBOT_HOME", str(tmp_path))
+    addon = importlib.import_module("datebot.capture.hinge_addon")
+    cap = addon.HingeCapture(Recorder(fetch=lambda u: b"", source="hinge", db_path=str(tmp_path / "t.db")))
+    cap.response(flow("/rec/v2", json.dumps({"feeds": []})))
+    assert "/rec/v2 200 headers: {'etag': 'abc'}" in capsys.readouterr().out
