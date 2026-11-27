@@ -105,8 +105,10 @@ const say = t => { $('msg').textContent = t; };
 function renderStats(s) {
   $('stats').textContent = `${s.rated} rated (${s.likes}♥ / ${s.passes}✕) · ${s.unrated - s.hidden} left` + (s.auto_swiped ? ` · ${s.auto_swiped} auto-swiped` : '') + (s.models.length ? ` · model: ${s.models.join(', ')}` : ' · no model');
   const nb = $('behind');
-  nb.hidden = !s.behind;
-  nb.textContent = s.behind ? `Model is ${s.behind} rating${s.behind === 1 ? '' : 's'} behind: press Train model to include ${s.behind === 1 ? 'it' : 'them'}.` : '';
+  nb.hidden = !s.behind && !s.retraining;
+  nb.textContent = s.retraining ? 'Retraining the model in the background…' : s.behind ? `Model is ${s.behind} rating${s.behind === 1 ? '' : 's'} behind: press Train model to include ${s.behind === 1 ? 'it' : 'them'}, or it retrains by itself at ${s.retrain_every}.` : '';
+  clearTimeout(renderStats.poll);
+  if (s.retraining) renderStats.poll = setTimeout(() => renderStatsOnly(), 3000);  // pick up the finished model
   $('hiddenCount').textContent = s.hidden ? `(${s.hidden} hidden)` : '';
 }
 

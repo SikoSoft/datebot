@@ -157,3 +157,37 @@ def test_ideal_endpoint_and_page(client):
 
 def test_stats_report_how_far_the_model_is_behind(client):
     assert client.get("/api/next").json()["stats"]["behind"] is None  # no model yet
+
+
+def test_rating_triggers_background_retrain_only_when_a_model_is_far_enough_behind(client, monkeypatch):
+    import threading
+
+    from datebot import model
+    from datebot.web import app as webapp
+
+    ran = threading.Event()
+
+    def fake_job(name):
+        ran.set()
+        webapp._retraining.release()
+
+    monkeypatch.setattr(webapp, "_retrain_job", fake_job)
+    monkeypatch.setattr(webapp, "AUTO_RETRAIN_EVERY", 2)
+    monkeypatch.setattr(model, "load", lambda name="default": model.Trained(None, "m", 0, 0, None, "2000-01-01T00:00:00+00:00"))
+    ids = [client.post("/api/profiles", files=[("photos", ("a.png", png(c), "image/png"))]).json()["id"]
+           for c in ("red", "green", "blue")]
+    client.post("/api/rate", json={"profile_id": ids[0], "liked": True})
+    assert not ran.is_set()  # 1 behind, below the threshold
+    s = client.post("/api/rate", json={"profile_id": ids[1], "liked": False}).json()
+    assert ran.wait(2) and s["retrain_every"] == 2
+
+
+def test_retrain_needs_a_model_and_runs_one_at_a_time(monkeypatch):
+    from datebot.web import app as webapp
+
+    started = []
+    monkeypatch.setattr(webapp, "_retrain_job", lambda name: started.append(name))  # never releases the lock
+    assert webapp.maybe_retrain(None) is False and webapp.maybe_retrain(webapp.AUTO_RETRAIN_EVERY - 1) is False
+    assert webapp.maybe_retrain(webapp.AUTO_RETRAIN_EVERY) is True
+    assert webapp.maybe_retrain(webapp.AUTO_RETRAIN_EVERY) is False  # one is already running
+    webapp._retraining.release()

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import tempfile
+import threading
 from dataclasses import asdict
 from pathlib import Path
 
@@ -12,6 +14,32 @@ from pydantic import BaseModel
 from datebot import config, db, filters, ideal, ingest, insights, model
 
 STATIC = Path(__file__).parent / "static"
+log = logging.getLogger("datebot.web")
+
+AUTO_RETRAIN_EVERY = 25  # retrain once this many ratings have piled up since the model was trained
+_retraining = threading.Lock()
+
+
+def _retrain_job(model_name: str) -> None:
+    """Embed anything new and retrain, on a background thread (CLIP can take a while). Never raises."""
+    from datebot import embed
+
+    try:
+        with db.session() as conn:
+            embed.embed_pending(conn)
+            model.train(conn, embed.EMBED_ID, model_name)
+    except Exception as e:  # missing embed extra, too few likes/passes, ...: the manual button reports these
+        log.warning("automatic retrain failed: %s", e)
+    finally:
+        _retraining.release()
+
+
+def maybe_retrain(behind: int | None, model_name: str = "default") -> bool:
+    """Start a background retrain when a model exists and is AUTO_RETRAIN_EVERY or more ratings behind."""
+    if behind is None or behind < AUTO_RETRAIN_EVERY or not _retraining.acquire(blocking=False):
+        return False
+    threading.Thread(target=_retrain_job, args=(model_name,), daemon=True).start()
+    return True
 
 
 class RateBody(BaseModel):
@@ -42,7 +70,8 @@ def _stats(conn) -> dict:
     unrated = len(db.unrated_profile_ids(conn))
     return {"total": total, "rated": len(ratings), "likes": likes, "passes": len(ratings) - likes,
             "auto_swiped": len(db.auto_swiped_ids(conn)), "unrated": unrated, "hidden": unrated - len(filters.eligible_unrated(conn)),
-            "models": model.list_models(), "behind": model.ratings_behind(conn, model.load())}
+            "models": model.list_models(), "behind": model.ratings_behind(conn, model.load()),
+            "retraining": _retraining.locked(), "retrain_every": AUTO_RETRAIN_EVERY}
 
 
 def _card(conn, pid: int, score: float | None) -> dict:
@@ -182,6 +211,7 @@ def create_app() -> FastAPI:
             if db.get_profile(conn, body.profile_id) is None:
                 raise HTTPException(404, "no such profile")
             db.add_rating(conn, body.profile_id, body.liked)
+            maybe_retrain(model.ratings_behind(conn, model.load()))
             return _stats(conn)
 
     @app.post("/api/fake")
