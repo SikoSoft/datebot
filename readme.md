@@ -78,6 +78,8 @@ uv run datebot eval                   # is it learning anything yet?
 uv run datebot ui                     # http://127.0.0.1:8000 : rate with the arrow keys, click "Train model" now and then
 ```
 
+The rate page stays live while a `capture` session (Tinder, Badoo or Hinge) runs beside it: it polls every 3 seconds while the tab is visible, so the counts update without a reload, and if you swipe the profile that is on screen in the app, the card moves on by itself. This works for any app because every capture stores your swipe as a rating in the same database; it only applies to swipes that were recorded as ratings (a swipe on a profile the capture never saw is not).
+
 **Adding profiles from a folder of photos** (each subfolder = one profile)
 
 ```bash
