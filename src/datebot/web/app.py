@@ -53,6 +53,7 @@ def _card(conn, pid: int, score: float | None) -> dict:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="datebot")
+    app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
     app.mount("/photos", StaticFiles(directory=str(config.photos_dir())), name="photos")
 
     @app.get("/")
