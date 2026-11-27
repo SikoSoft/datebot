@@ -141,7 +141,9 @@ because Tinder opens with a near-universal "like" that says nothing about taste 
 - Tinder: none. `tinder.com/app/profile/{_id}` was tried in a logged-in session and shows an error page. The web app has
   no share button, and captured `recs/core` users carry no username or share slug. The share link probably exists only in
   the phone app (capture it there if wanted).
-- Badoo `https://badoo.com/profile/{user_id}`: **Unverified** for unmatched people. No URL fields appear in captured traffic.
+- Badoo `https://badoo.com/profile/{user_id}`: **Verified** by hand with an unmatched profile (the `user_id` is a long
+  opaque token, which works as-is). It only loads in a browser logged in to Badoo, so the link does nothing useful in a
+  browser without a Badoo session (the capture window's separate Chrome profile is logged in).
 - Hinge: none. No web profiles or public share URL exist.
 
 ---
