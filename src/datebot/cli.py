@@ -110,11 +110,48 @@ def reset_model(name: str = typer.Option("default")) -> None:
     typer.echo("Model removed." if model.reset(name) else f"No model '{name}'.")
 
 
+@app.command()
+def backup(
+    to: Path = typer.Option(None, "--to", help="Folder to write the snapshot to (default: data/backups/<timestamp>)."),
+    no_photos: bool = typer.Option(False, "--no-photos", help="Skip the (large) photo files; db, filters and models only."),
+) -> None:
+    """Snapshot the db (profiles, every yes/no), filters, models and photos. Safe while the UI runs."""
+    from datebot import backup as bk
+
+    dest = bk.create(to, photos=not no_photos)
+    c = bk.verify(dest)
+    typer.echo(f"Backed up to {dest}: {c['profiles']} profiles, {c['ratings']} rating rows, {c['photo_files']} photo files.")
+
+
+@app.command()
+def restore(
+    snapshot: Path = typer.Argument(None, help="A snapshot folder (default: the newest in data/backups)."),
+    yes: bool = typer.Option(False, "--yes", help="Skip confirmation."),
+) -> None:
+    """Put a snapshot back as the live data (first saves the current state so this can be undone)."""
+    from datebot import backup as bk
+
+    if snapshot is None:
+        found = bk.list_snapshots()
+        if not found:
+            typer.echo("No snapshots in data/backups.")
+            raise typer.Exit(1)
+        snapshot = found[-1]
+    c = bk.verify(snapshot)
+    if not yes:
+        typer.confirm(f"Restore {snapshot} ({c['profiles']} profiles, {c['ratings']} rating rows)?", abort=True)
+    safety = bk.restore(snapshot)
+    typer.echo(f"Restored. Previous state saved to {safety}.")
+
+
 @app.command("reset-ratings")
 def reset_ratings(yes: bool = typer.Option(False, "--yes", help="Skip confirmation.")) -> None:
     """Erase all ratings (start teaching from scratch). Profiles and photos are kept."""
     if not yes:
-        typer.confirm("Delete ALL ratings?", abort=True)
+        typer.confirm("Delete ALL ratings? (a backup is saved first)", abort=True)
+    from datebot import backup as bk
+
+    typer.echo(f"Backup saved to {bk.create(photos=False, label='before-reset-ratings')}")
     with db.session() as conn:
         n = db.clear_ratings(conn)
     typer.echo(f"Deleted {n} rating(s).")
