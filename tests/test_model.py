@@ -142,3 +142,18 @@ def test_explain_blocks_sum_to_the_score(conn):
     assert [f["name"] for f in out["factors"]] == model.BLOCKS
     logit = out["intercept"] + sum(f["logit"] for f in out["factors"])
     assert 1 / (1 + np.exp(-logit)) * 100 == pytest.approx(model.score(trained, emb), abs=1e-3)
+
+
+def test_ratings_behind_counts_human_ratings_since_training(tmp_path):
+    from datebot import db, model
+
+    conn = db.connect(str(tmp_path / "b.db"))
+    pids = [db.add_profile(conn, "manual", f"p{i}") for i in range(4)]
+    assert model.ratings_behind(conn, None) is None
+    trained = model.Trained(None, "m", 0, 0, None, "2026-01-01T12:00:00+00:00")
+    conn.execute("INSERT INTO ratings (profile_id, liked, origin, created_at) VALUES (?,1,'manual','2026-01-01 11:59:59')", (pids[0],))
+    assert model.ratings_behind(conn, trained) == 0
+    conn.execute("INSERT INTO ratings (profile_id, liked, origin, created_at) VALUES (?,1,'manual','2026-01-01 12:05:00')", (pids[0],))  # re-rated
+    conn.execute("INSERT INTO ratings (profile_id, liked, origin, created_at) VALUES (?,0,'app','2026-01-01 12:06:00')", (pids[1],))
+    conn.execute("INSERT INTO ratings (profile_id, liked, origin, created_at) VALUES (?,0,'auto','2026-01-01 12:07:00')", (pids[2],))  # bot: ignored
+    assert model.ratings_behind(conn, trained) == 2

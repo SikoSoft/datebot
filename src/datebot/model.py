@@ -156,6 +156,20 @@ def list_models() -> list[str]:
     return sorted(p.stem for p in config.models_dir().glob("*.joblib"))
 
 
+def ratings_behind(conn: sqlite3.Connection, trained: Trained | None) -> int | None:
+    """How many profiles you have rated (or re-rated) since the model was trained; None when there is no model.
+
+    Counts profiles whose latest human rating is newer than `trained_at`, whether or not the hard filters would
+    keep them out of the next training run (the filtered ones are a small overcount, never a miss)."""
+    if trained is None:
+        return None
+    since = datetime.fromisoformat(trained.trained_at).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    marks = ",".join("?" * len(db.HUMAN_ORIGINS))
+    return conn.execute(
+        f"SELECT COUNT(DISTINCT profile_id) FROM ratings WHERE origin IN ({marks}) AND created_at > ?",
+        (*db.HUMAN_ORIGINS, since)).fetchone()[0]
+
+
 def score(trained: Trained, embeddings: np.ndarray, text_embedding: np.ndarray | None = None) -> float:
     """Score a profile 0-100 (probability you'd like them)."""
     p = trained.clf.predict_proba(featurize(embeddings, text_embedding).reshape(1, -1))[0, 1]
