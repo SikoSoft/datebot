@@ -6,8 +6,8 @@ and how you can ask the data questions later (`datebot explain`, or your own ana
 ## The pipeline
 
 ```
-photo files ──CLIP image encoder──▶ 512 numbers per photo ─┐
-bio / prompts ─CLIP text encoder──▶ 512 numbers per bio   ─┼─▶ one feature vector per profile
+photo files ──CLIP image encoder──▶ 768 numbers per photo ─┐
+bio / prompts ─CLIP text encoder──▶ 768 numbers per bio   ─┼─▶ one feature vector per profile
                                                            │        │
 your likes / passes ───────────────────────────────────────┘        ▼
                                                       logistic regression ─▶ P(like) × 100
@@ -19,13 +19,13 @@ Everything runs on your machine. The only network access is a one-time download 
 
 CLIP is a neural network trained by OpenAI-style contrastive learning on hundreds of millions of image/caption
 pairs. It has two halves: an **image encoder** and a **text encoder**. Both turn their input into a list of numbers
-(an *embedding*, here 512 floats) in the **same space**, trained so that a photo and a caption that describes it end
+(an *embedding*, here 768 floats) in the **same space**, trained so that a photo and a caption that describes it end
 up close together. "Close" is measured by cosine similarity (the dot product of two unit-length vectors).
 
-Datebot uses the open_clip implementation, model `ViT-B-32`, weights `laion2b_s34b_b79k`
-(`EMBED_ID = "ViT-B-32/laion2b_s34b_b79k"` in `embed.py`). Vectors are L2-normalised (length 1).
+Datebot uses the open_clip implementation, model `ViT-L-14`, weights `laion2b_s32b_b82k`
+(`EMBED_ID = "ViT-L-14/laion2b_s32b_b82k"` in `embed.py`). Vectors are L2-normalised (length 1).
 
-An embedding is not a list of features like "has glasses = 1". Each of the 512 numbers is a mixture of many visual
+An embedding is not a list of features like "has glasses = 1". Each of the 768 numbers is a mixture of many visual
 concepts; no single number means anything on its own. The meaning is in directions and distances: photos with
 similar content have similar vectors.
 
@@ -63,7 +63,7 @@ re-rating or re-embedding.
 - **Small data is noisy.** With 14 likes nearly everything is chance. `explain` shows a Benjamini-Hochberg corrected
   q-value so that, across ~38 attributes tested at once, a lucky one does not look like a finding. `*` marks the ones
   that survive. Expect nothing to be flagged until you have a few dozen likes.
-- **The trained model does not use the attributes.** It never sees "glasses". It learns one direction in the 512-d
+- **The trained model does not use the attributes.** It never sees "glasses". It learns one direction in the 768-d
   space from your ratings. `explain` is a separate lens for *describing* that taste, not part of the scoring.
 - **If an attribute is a hard rule for you, make it a filter**, not a learned preference (`datebot filters`).
 
@@ -73,15 +73,22 @@ For each profile (`model.featurize`):
 
 | block | size | meaning |
 |---|---|---|
-| mean of photo embeddings | 512 | overall look across photos |
-| max of photo embeddings (per dimension) | 512 | a standout photo is not averaged away |
-| lead (first) photo embedding | 512 | the photo you see first gets its own block, so the model can learn how much it matters versus the rest |
-| text embedding, mean over lines | 512 | overall tone of the bio + prompts + interests; zeros if the profile has no text |
-| text embedding, max over lines | 512 | one standout prompt is not averaged away |
+| mean of photo embeddings | 768 | overall look across photos |
+| max of photo embeddings (per dimension) | 768 | a standout photo is not averaged away |
+| lead (first) photo embedding | 768 | the photo you see first gets its own block, so the model can learn how much it matters versus the rest |
+| text embedding, mean over lines | 768 | overall tone of the bio + prompts + interests; zeros if the profile has no text |
+| text embedding, max over lines | 768 | one standout prompt is not averaged away |
 | has_text flag | 1 | so "no bio" is distinguishable from "bio about nothing" |
 
 Bio, each prompt answer, each interest and each descriptor are embedded **separately** and then pooled, because CLIP
 truncates any single text at 77 tokens (a prompt-heavy Hinge profile would otherwise lose most of its prompts).
+
+**Which of these blocks the model uses.** Only the first: the L2-normalised mean of the photo embeddings
+(`model.PhotoAverageLR`). In cross-validation on ~350 ratings, logistic regression on the photo average alone beat
+using all blocks (adding best/lead photo lowered AUC, and text alone scored about 0.58). Moving from ViT-B-32 to
+ViT-L-14 raised AUC from about 0.70 to 0.77; an RBF SVM and per-photo models were no better than plain logistic
+regression once the larger embedding was used. The other blocks are still computed so `datebot eval` can compare
+photos with text, and so nothing stored is discarded; re-test them as ratings grow.
 
 A `LogisticRegression` (regularised, `class_weight="balanced"`, since you pass on most profiles) is fitted to your
 likes/passes. The score is `P(like) × 100`. Only your own ratings (`manual` and `app` origin) are labels: the bot's
@@ -105,7 +112,7 @@ Everything personal is in `data/` (gitignored; override the location with `DATEB
 
 In `datebot.db`:
 
-- `photos.embedding`: a `BLOB` holding the raw bytes of 512 little-endian `float32` values = **2048 bytes per photo**.
+- `photos.embedding`: a `BLOB` holding the raw bytes of 768 little-endian `float32` values = **3072 bytes per photo**.
   Next to it, `photos.embed_model` records which model made it (the `EMBED_ID` above).
 - `profiles.text_embedding` and `profiles.text_embed_model`: the bio/prompt text, one per profile, stored as the
   pooled `[mean, max]` of its per-line embeddings (1024 floats). `text_embed_model` also carries the layout version
@@ -145,7 +152,7 @@ rows = con.execute(
 photo_ids = [r[0] for r in rows]
 profile_ids = [r[1] for r in rows]
 paths = [r[2] for r in rows]
-X = np.stack([np.frombuffer(r[3], dtype=np.float32) for r in rows])   # (n_photos, 512), unit length
+X = np.stack([np.frombuffer(r[3], dtype=np.float32) for r in rows])   # (n_photos, 768), unit length
 
 # your ratings, latest per profile, excluding the bot's own swipes
 liked = dict(con.execute(

@@ -8,9 +8,10 @@ Everything runs locally. Photos, ratings and models live in `data/` (gitignored)
 ## How it works
 
 1. Profiles (photos + optional name/age/bio) go into a local SQLite database.
-2. Each photo, and each bio/prompt text, is embedded with CLIP (ViT-B-32) on your machine.
-3. A logistic-regression model over those embeddings learns your likes/passes and scores profiles 0-100.
-   Photos of a profile are summarized by their mean, max and first (lead) photo; the bio and each prompt are embedded separately and pooled into an extra block (zeros if there is no text).
+2. Each photo, and each bio/prompt text, is embedded with CLIP (ViT-L-14) on your machine.
+3. A logistic-regression model over the average photo embedding learns your likes/passes and scores profiles 0-100.
+   Best-photo, lead-photo and bio/prompt-text features are still computed (for `datebot eval`'s photo-vs-text comparison)
+   but the model ignores them: cross-validation showed they did not help (text alone is barely above chance).
 4. Hard filters (below) remove deal-breakers before the model ever sees a profile.
 5. Once a model exists, the UI shows you the profiles it is *least sure about* first (active learning),
    which is the fastest way to teach it.
@@ -21,7 +22,7 @@ Think of datebot as having **two separate jobs** that happen to be chained:
 
 | | embedding (`datebot embed`) | training (`datebot train`) |
 |---|---|---|
-| **What it does** | *Reads* each photo (and bio) once and converts it into 512 numbers that describe what it looks like. | *Learns your taste*: fits the model to your likes/passes, using those numbers. |
+| **What it does** | *Reads* each photo (and bio) once and converts it into 768 numbers that describe what it looks like. | *Learns your taste*: fits the model to your likes/passes, using those numbers. |
 | **Input** | New profiles that have no numbers yet. | Your ratings + the numbers from embedding. |
 | **Depends on your ratings?** | No. It never looks at them. | Yes, entirely. |
 | **Speed** | The slower one (runs CLIP on your machine; seconds for a few profiles, minutes for hundreds). | Fast (seconds). |
