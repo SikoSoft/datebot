@@ -74,10 +74,12 @@ def embed_pending(conn: sqlite3.Connection) -> int:
         for pid, parts in texts:
             db.set_text_embedding(conn, pid, pool_text(lines[start : start + len(parts)]), EMBED_ID)
             start += len(parts)
+        conn.commit()  # release the write lock before the slow photo embedding below
     pending = db.photos_missing_embeddings(conn, EMBED_ID)
     if not pending:
         return 0
     vecs = embed_images([p for _, p in pending])
     for (photo_id, _), vec in zip(pending, vecs):
         db.set_embedding(conn, photo_id, vec, EMBED_ID)
+    conn.commit()
     return len(pending)
