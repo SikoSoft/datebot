@@ -42,7 +42,7 @@ def _stats(conn) -> dict:
     unrated = len(db.unrated_profile_ids(conn))
     return {"total": total, "rated": len(ratings), "likes": likes, "passes": len(ratings) - likes,
             "auto_swiped": len(db.auto_swiped_ids(conn)), "unrated": unrated, "hidden": unrated - len(filters.eligible_unrated(conn)),
-            "models": model.list_models()}
+            "models": model.list_models(), "behind": model.ratings_behind(conn, model.load())}
 
 
 def _card(conn, pid: int, score: float | None) -> dict:

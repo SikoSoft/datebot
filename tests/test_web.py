@@ -153,3 +153,7 @@ def test_ideal_endpoint_and_page(client):
     assert client.get("/ideal").status_code == 200
     body = client.get("/api/ideal").json()
     assert body["looks"] == [] and body["matches"] == [] and body["model_active"] is False
+
+
+def test_stats_report_how_far_the_model_is_behind(client):
+    assert client.get("/api/next").json()["stats"]["behind"] is None  # no model yet
