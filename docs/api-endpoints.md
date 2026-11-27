@@ -138,9 +138,9 @@ because Tinder opens with a near-universal "like" that says nothing about taste 
 ## Profile links (UI "Open in app")
 
 `web/links.py` builds a link from `source` + stored `external_id`; the UI shows it only when one exists.
-- Tinder `https://tinder.com/app/profile/{_id}`: **Unverified**. Captured `recs/core` users (22 fields) carry no username
-  or share slug, only `_id`; Tinder's real share links use a separate slug we have not seen. May not open for people you
-  have not matched with.
+- Tinder: none. `tinder.com/app/profile/{_id}` was tried in a logged-in session and shows an error page. The web app has
+  no share button, and captured `recs/core` users carry no username or share slug. The share link probably exists only in
+  the phone app (capture it there if wanted).
 - Badoo `https://badoo.com/profile/{user_id}`: **Unverified** for unmatched people. No URL fields appear in captured traffic.
 - Hinge: none. No web profiles or public share URL exist.
 

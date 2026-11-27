@@ -1,12 +1,12 @@
 """Link from a stored profile back to the person's page in their app, where one exists.
 
-Templates are built from the stored external id only; none of these are confirmed from captured traffic
-(see docs/api-endpoints.md, "Profile links"). Hinge has no web profile at all, so it never gets a link.
+Templates are built from the stored external id only and are not confirmed from captured traffic
+(see docs/api-endpoints.md, "Profile links"). Tinder has none: tinder.com/app/profile/{id} shows an error page, and the
+web app has no share button. Hinge has no web profile at all.
 """
 from __future__ import annotations
 
 PROFILE_URLS = {
-    "tinder": "https://tinder.com/app/profile/{id}",  # Unverified: may only open for people the app lets you see
     "badoo": "https://badoo.com/profile/{id}",  # Unverified for people you have not matched with
 }
 
