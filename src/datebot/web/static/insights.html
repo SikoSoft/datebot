@@ -188,7 +188,9 @@ function render() {
     const d = el('details'); d.append(el('summary', '', `Left out as likely fake: ${s.fake.excluded} (score ≥ ${s.fake.threshold})`));
     d.append(el('div', 'hint', 'Check these to tune the slider. If real people show up here, raise it. Nothing is deleted or hidden from rating.'));
     s.fake.examples.forEach(e => {
-      const line = el('div', 'note', `${e.name || '?'} (${e.source}, ${e.liked ? 'liked' : 'passed'}) score ${e.score}: ${e.reasons.join('; ')} `);
+      const line = el('div', 'note');
+      const who = el('a', '', e.name || '?'); who.href = '/browse#' + e.id; who.target = '_blank'; who.style.color = 'inherit';
+      line.append(who, ` (${e.source}, ${e.liked ? 'liked' : 'passed'}) score ${e.score}: ${e.reasons.join('; ')} `);
       const b = el('button', 'sm', e.manual ? 'Clear my mark' : 'Actually real');
       b.onclick = async () => { await fetch('/api/fake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_id: e.id, is_fake: e.manual ? null : false }) }); load(); };
       line.append(b); d.append(line);

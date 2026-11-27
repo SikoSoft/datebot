@@ -83,7 +83,10 @@ function item(p, kind) {
   const thumbs = el('div', 'thumbs');
   p.photos.forEach(src => { const i = el('img'); i.src = src; i.alt = ''; i.loading = 'lazy'; thumbs.append(i); });
   const body = el('div', 'body');
-  const h = el('h3', null, `${p.name || 'Unnamed'}${p.age ? ', ' + p.age : ''}`);
+  const h = el('h3');
+  const nameLink = el('a', null, `${p.name || 'Unnamed'}${p.age ? ', ' + p.age : ''}`);
+  nameLink.href = '/browse#' + p.id; nameLink.target = '_blank'; nameLink.style.color = 'inherit'; nameLink.title = 'Open this profile';
+  h.append(nameLink);
   if (p.score != null) h.append(el('span', 'score', `${Math.round(p.score)}`));
   body.append(h);
   if (kind === 'auto') {
