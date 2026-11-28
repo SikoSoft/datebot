@@ -117,9 +117,10 @@ async function show() {
   top.append(el('h2', '', `${p.name || '(no name)'}${p.age ? ', ' + p.age : ''}`));
   top.append(el('span', 'score', p.score == null ? '–' : Math.round(p.score)));
   card.append(top);
-  const meta = el('div', 'hint', `#${p.id} · ${p.source} · model guess ${p.score == null ? 'n/a' : Math.round(p.score) + '/100'} · you: `);
+  const meta = el('div', 'hint', `#${p.id} · `);
+  meta.append(appIcon(p.source), ` · model guess ${p.score == null ? 'n/a' : Math.round(p.score) + '/100'} · you: `);
   meta.append(el('span', 'tag ' + (d.yours == null ? 'none' : d.yours ? 'like' : 'pass'), d.yours == null ? 'unrated' : d.yours ? 'liked' : 'passed'));
-  if (p.url) { const a = el('a', '', ` · open in ${p.source} ↗`); a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; meta.append(a); }
+  if (p.url) { const a = el('a', ''); a.append(' · open in ', appIcon(p.source), ' ↗'); a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; meta.append(a); }
   if (d.yours == null) { const r = el('a', 'sm', ' · Rate this profile →'); r.href = '/?profile=' + p.id; r.style.fontWeight = '600'; meta.append(r); }
   card.append(meta);
   card.append(renderDetails(p.details));

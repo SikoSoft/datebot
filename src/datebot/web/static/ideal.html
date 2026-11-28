@@ -90,10 +90,11 @@ function profCard(p) {
   else if (p.bot !== null && p.bot !== undefined) name.append(el('span', 'tag', 'bot ' + (p.bot ? 'liked' : 'passed')));
   else name.append(el('span', 'tag', 'unrated'));
   info.append(name);
-  const bits = [p.source];
+  const bits = [];
   if (p.score !== null) bits.push('model ' + Math.round(p.score));
   if (p.match !== null) bits.push(`ideal ${pct(p.match)} (${p.matched.length}/${p.traits_known})`);
-  info.append(el('div', 'hint', bits.join(' · ')));
+  const meta = el('div', 'hint'); meta.append(appIcon(p.source), bits.length ? ' · ' + bits.join(' · ') : '');
+  info.append(meta);
   if (p.matched.length) { const m = el('div', 'hint', '✓ ' + p.matched.join(', ')); m.style.marginTop = '4px'; info.append(m); }
   c.append(info);
   return c;

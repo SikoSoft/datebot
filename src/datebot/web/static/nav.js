@@ -1,5 +1,21 @@
 // Shared top navigation for every page of the UI. Add `<script src="/static/nav.js"></script>` as the first
 // element of <body>; to add a page, add one line to PAGES (the server must serve it at that path).
+// appIcon(source) -> inline element showing the app's logo (falls back to the name); tooltip is the name.
+window.appIcon = source => {
+  const ICONS = {
+    tinder: ['#fe3c72', '<path fill="#fff" d="M12 21c-3.9 0-6.5-2.7-6.5-6.2 0-3.6 2.6-5.6 3.3-9.3 0-.3.4-.5.6-.2 1.2 1.3 1.6 2.8 1.6 3.8.9-.7 1.4-2 1.4-3.2 0-.3.3-.4.5-.3C16.6 7 18.5 10.600 18.500 14.100 18.500 18 16 21 12 21z"/>'],
+    badoo: ['#783bf9', '<path fill="#fff" d="M7 5h4.500c2.600 0 4 1.300 4 3.200 0 1.200-.6 2.100-1.600 2.600 1.400.4 2.300 1.500 2.300 3 0 2.100-1.600 3.700-4.300 3.700H7zm2.600 2.200v2.500h1.700c.9 0 1.400-.5 1.400-1.200s-.5-1.300-1.400-1.300zm0 4.700v2.800h2c1 0 1.600-.5 1.600-1.400s-.6-1.400-1.600-1.400z"/>'],
+    hinge: ['#1c1c1c', '<path fill="#fff" d="M7 5h2.400v5.300h5.200V5H17v14h-2.400v-6.400H9.400V19H7z"/>'],
+  };
+  const key = String(source || '').toLowerCase(), icon = ICONS[key];
+  const span = document.createElement('span');
+  span.title = source || '';
+  if (!icon) { span.textContent = source || ''; return span; }
+  span.style.cssText = 'display:inline-flex;vertical-align:-4px';
+  span.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" role="img" aria-label="${key}"><rect width="24" height="24" rx="6" fill="${icon[0]}"/>${icon[1]}</svg>`;
+  return span;
+};
+
 (() => {
   const PAGES = [
     ['/', 'Rate'],
