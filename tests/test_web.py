@@ -219,3 +219,16 @@ def test_stats_says_when_the_current_profile_was_rated_elsewhere(client):
         db.add_rating(conn, pid, False, origin="app")
     assert client.get(f"/api/stats?profile_id={pid}").json()["profile_rated"] is True
     assert "profile_rated" not in client.get("/api/stats").json()
+
+
+def test_card_carries_saved_profile_details(client):
+    from datebot import db
+    with db.session() as conn:
+        pid = db.add_profile(conn, "tinder", [], external_id="x", name="A", age=30, bio="hi",
+                             extra={"city": "Malmö", "distance_mi": 5, "height_cm": 170, "jobs": ["Nurse"],
+                                    "prompts": ["Q: A"], "interests": ["Yoga", "Hiking"]})
+        card = __import__("datebot.web.app", fromlist=["_card"])._card(conn, pid, None)
+    by = {d["label"]: d["lines"] for d in card["details"]}
+    assert by["Location"] == ["Malmö · 8 km away"]
+    assert by["Height"] == ["170 cm"] and by["Work"] == ["Nurse"] and by["Prompts"] == ["Q: A"]
+    assert by["Interests"] == ["Yoga, Hiking"]
