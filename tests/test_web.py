@@ -232,3 +232,10 @@ def test_card_carries_saved_profile_details(client):
     assert by["Location"] == ["Malmö · 8 km away"]
     assert by["Height"] == ["170 cm"] and by["Work"] == ["Nurse"] and by["Prompts"] == ["Q: A"]
     assert by["Interests"] == ["Yoga, Hiking"]
+
+
+def test_behavior_page_and_untrained_endpoint(client):
+    assert client.get("/behavior").status_code == 200
+    body = client.get("/api/behavior").json()
+    assert body["trained"] is False and body["interactions"] == 0
+    assert client.post("/api/behavior/train").status_code == 400

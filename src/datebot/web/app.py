@@ -217,6 +217,34 @@ def create_app() -> FastAPI:
     def ideal_page():
         return FileResponse(STATIC / "ideal.html")
 
+    @app.get("/api/behavior")
+    def get_behavior(name: str = "default"):
+        """The trained behaviour model as JSON (bands, rhythm, learned rules), or {"trained": false} with how much data exists."""
+        from datebot import behavior_model
+
+        m = behavior_model.load(name)
+        with db.session() as conn:
+            have = len(db.interactions(conn, origin="app"))
+        if m is None:
+            return {"trained": False, "interactions": have, "min_total": behavior_model.MIN_TOTAL}
+        return {"trained": True, "interactions": have, "model": behavior_model.describe(m)}
+
+    @app.post("/api/behavior/train")
+    def train_behavior(name: str = "default"):
+        """(Re)learn the behaviour model from your captured swipes. Derived features are refreshed; nothing is deleted."""
+        from datebot import behavior_model, embed
+
+        with db.session() as conn:
+            try:
+                behavior_model.train(conn, embed.EMBED_ID, name)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        return get_behavior(name)
+
+    @app.get("/behavior")
+    def behavior_page():
+        return FileResponse(STATIC / "behavior.html")
+
     @app.get("/api/filters")
     def get_filters():
         return asdict(filters.load())

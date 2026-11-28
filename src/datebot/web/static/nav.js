@@ -8,6 +8,7 @@
     ['/insights', 'Insights'],
     ['/wants', 'Wants'],
     ['/ideal', 'Ideal'],
+    ['/behavior', 'Behaviour'],
   ];
   const css = `
   #appnav { position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:4px; height:var(--nav-h); padding:0 12px;

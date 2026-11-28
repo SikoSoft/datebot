@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datebot behaviour</title>
+<style>
+  :root { --bg:#f6f5f3; --fg:#1d1d1f; --card:#fff; --muted:#6e6e73; --like:#1f9d55; --pass:#d64545; --line:#e3e1dd; --bar:#8b8b92; --accent:#3b6fd4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#f2f2f2; --card:#1e1e1e; --muted:#9a9aa0; --line:#2e2e2e; --bar:#6c6c74; --accent:#6f9bf0; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:var(--nav-h, 0px); background:var(--bg); z-index:5; }
+  header h1 { font-size:17px; margin:0; }
+  .ctl { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:13px; color:var(--muted); }
+  button, select { padding:6px 12px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; cursor:pointer; font:13px system-ui, sans-serif; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  main { max-width:1180px; margin:16px auto; padding:0 16px 60px; }
+  .tiles { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 16px; min-width:120px; }
+  .tile b { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
+  .tile span { color:var(--muted); font-size:12px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:16px; }
+  .panel h2 { margin:0 0 2px; font-size:16px; }
+  .hint { color:var(--muted); font-size:12.5px; margin-bottom:8px; }
+  .empty { padding:30px 16px; text-align:center; color:var(--muted); }
+  .err { color:var(--pass); font-size:13px; }
+  /* learned rules */
+  ul.rules { list-style:none; margin:8px 0 0; padding:0; }
+  ul.rules li { display:flex; gap:10px; align-items:baseline; padding:6px 2px; border-top:1px solid var(--line); font-size:14px; }
+  ul.rules li:first-child { border-top:0; }
+  ul.rules .arrow { flex:none; width:18px; text-align:center; font-weight:700; }
+  ul.rules .up { color:var(--like); } ul.rules .down { color:var(--pass); }
+  /* simulation */
+  .sim { display:grid; grid-template-columns:340px 1fr; gap:20px; align-items:start; }
+  .slider { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:8px 0 14px; }
+  .slider input[type=range] { flex:1; min-width:200px; max-width:520px; }
+  .slider .val { font-size:20px; font-weight:700; font-variant-numeric:tabular-nums; min-width:110px; }
+  .window { position:relative; width:300px; height:520px; margin:0 auto; border:2px solid var(--line); border-radius:22px; overflow:hidden; background:var(--bg); user-select:none; }
+  .window .photo { position:absolute; left:0; top:0; right:0; height:400px; display:flex; align-items:center; justify-content:center; font-size:84px; color:rgba(255,255,255,.65); transition:background .25s; }
+  .window .dots { position:absolute; top:8px; left:12px; right:12px; display:flex; gap:4px; }
+  .window .dots i { flex:1; height:3px; border-radius:2px; background:rgba(255,255,255,.4); }
+  .window .dots i.on { background:#fff; }
+  .window .meta { position:absolute; left:14px; top:340px; right:14px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.5); font-weight:700; font-size:19px; }
+  .window .meta small { display:block; font-weight:400; font-size:12px; opacity:.9; }
+  .window .more { position:absolute; left:0; right:0; top:400px; bottom:0; padding:10px 14px; font-size:12px; color:var(--muted); }
+  .window .more div { height:9px; border-radius:5px; background:var(--line); margin:7px 0; }
+  .window.scrolled .more { transform:translateY(-10px); }
+  .window .more { transition:transform .15s; }
+  .window.opened .photo { height:230px; } .window.opened .meta { top:170px; } .window.opened .more { top:230px; }
+  .btn { position:absolute; bottom:22px; width:58px; height:58px; border-radius:50%; background:var(--card); border:2px solid var(--line); display:flex; align-items:center; justify-content:center; font-size:26px; transition:transform .1s, background .1s; }
+  .btn.pass { left:62px; color:var(--pass); } .btn.like { right:62px; color:var(--like); }
+  .btn.press { transform:scale(.86); } .btn.pass.press { background:var(--pass); color:#fff; } .btn.like.press { background:var(--like); color:#fff; }
+  .window canvas { position:absolute; inset:0; pointer-events:none; }
+  .cursor { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; background:var(--accent); border:2px solid #fff; box-shadow:0 0 0 2px var(--accent); pointer-events:none; display:none; }
+  .key { position:absolute; top:430px; font-size:12px; padding:2px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); opacity:.35; }
+  .key.l { left:20px; } .key.r { right:20px; } .key.press { opacity:1; background:var(--accent); color:#fff; }
+  .stamp { position:absolute; top:120px; left:0; right:0; text-align:center; font-size:46px; font-weight:800; letter-spacing:.06em; opacity:0; transform:rotate(-8deg); transition:opacity .2s; }
+  .stamp.show { opacity:.95; } .stamp.like { color:var(--like); } .stamp.pass { color:var(--pass); }
+  .clock { text-align:center; margin-top:8px; font:13px ui-monospace, monospace; color:var(--muted); }
+  .simctl { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:10px; }
+  .timeline { list-style:none; margin:6px 0 0; padding:0; font-size:13px; }
+  .timeline li { display:flex; gap:10px; padding:3px 0; border-top:1px solid var(--line); color:var(--muted); }
+  .timeline li.done { color:var(--fg); }
+  .timeline li b { flex:none; width:54px; font:12.5px ui-monospace, monospace; }
+  .basis { font-size:13px; margin-bottom:8px; }
+  .basis .warn { color:var(--pass); }
+  /* tables */
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:5px 8px; text-align:right; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; white-space:normal; }
+  thead th { border-top:0; color:var(--muted); font-weight:600; font-size:12px; }
+  td.na { color:var(--muted); }
+  td.thin, th.thin { opacity:.55; }
+  tr.group td { background:var(--bg); color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; text-align:left; }
+  .scroll { overflow-x:auto; }
+  .range { position:relative; height:16px; width:100%; min-width:160px; background:var(--bg); border-radius:4px; }
+  .range .span { position:absolute; top:5px; height:6px; border-radius:3px; background:var(--accent); opacity:.45; }
+  .range .med { position:absolute; top:1px; width:3px; height:14px; border-radius:2px; background:var(--accent); }
+  .hours { display:flex; align-items:flex-end; gap:3px; height:80px; margin-top:8px; }
+  .hours div { flex:1; background:var(--accent); border-radius:2px 2px 0 0; min-height:1px; position:relative; }
+  .hourlab { display:flex; gap:3px; font-size:10px; color:var(--muted); } .hourlab span { flex:1; text-align:center; }
+  @media (max-width:820px) { .sim { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<script src="/static/nav.js"></script>
+<header>
+  <h1>How you behave when you swipe</h1>
+  <div class="ctl">
+    <span id="status"></span>
+    <button class="primary" id="train">Learn from my swipes</button>
+  </div>
+</header>
+<main id="main"><div class="empty">Loading…</div></main>
+
+<script>
+const $ = id => document.getElementById(id);
+const h = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else e.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
+  return e;
+};
+const secs = ms => ms == null ? '–' : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + 's';
+const pct = v => v == null ? '–' : Math.round(v * 100) + '%';
+let DATA = null;
+
+async function load() {
+  const r = await fetch('/api/behavior');
+  const d = await r.json();
+  DATA = d;
+  render();
+}
+
+$('train').onclick = async () => {
+  $('train').disabled = true; $('status').textContent = 'Learning… (embeds anything new first, can take a while)';
+  const r = await fetch('/api/behavior/train', { method: 'POST' });
+  const d = await r.json();
+  $('train').disabled = false;
+  if (!r.ok) { $('status').textContent = ''; const e = $('trainerr'); if (e) e.textContent = d.detail; else $('status').textContent = d.detail; return; }
+  DATA = d; render();
+};
+
+function render() {
+  stopSim();
+  const main = $('main');
+  main.replaceChildren();
+  if (!DATA.trained) {
+    $('status').textContent = '';
+    main.append(h('div', { class: 'panel' },
+      h('h2', {}, 'No behaviour model yet'),
+      h('div', { class: 'hint' }, `You have ${DATA.interactions} captured swipes of your own; the model needs at least ${DATA.min_total} that belong to a profile with a preference score (rate profiles and train the taste model first). `
+        + 'Tinder and Badoo browser capture records dwell and mouse/keyboard behaviour; Hinge records timing only.'),
+      h('div', { id: 'trainerr', class: 'err' }), h('div', {}, 'Press “Learn from my swipes” above.')));
+    return;
+  }
+  const m = DATA.model;
+  $('status').textContent = `trained ${m.trained_at.slice(0, 16).replace('T', ' ')}`;
+  main.append(
+    tiles(m), rulesPanel(m), simPanel(m), bandsPanel(m), featurePanel(m), rhythmPanel(m));
+  initSim(m);
+}
+
+function tiles(m) {
+  const t = (n, label) => h('div', { class: 'tile' }, h('b', {}, n), h('span', {}, label));
+  const usable = m.bands.filter(b => b.usable).length;
+  return h('div', { class: 'tiles' },
+    t(m.n_interactions, 'scored swipes learned from'), t(DATA.interactions, 'own swipes captured'),
+    t(m.rhythm.sessions, 'sessions'), t(`${usable}/${m.bands.length}`, `bands with ≥${m.min_band} swipes`),
+    t(m.source || 'all apps', 'source'), t(m.preference_model, 'preference model scoring'));
+}
+
+function rulesPanel(m) {
+  const ul = h('ul', { class: 'rules' });
+  for (const r of m.heuristics) {
+    ul.append(h('li', {}, h('span', { class: 'arrow ' + r.direction }, r.direction === 'up' ? '▲' : '▼'), r.text));
+  }
+  return h('div', { class: 'panel' }, h('h2', {}, 'What it has learned'),
+    h('div', { class: 'hint' }, 'Rules read off the bands below: how a behaviour differs between the profiles your taste model scores lowest and highest (only bands with enough swipes, only differences of 25%+). Strongest first. These are correlations in your own habits, not proof.'),
+    m.heuristics.length ? ul : h('div', { class: 'empty' }, 'Not enough swipes in at least two score bands yet to say how your behaviour changes with the score.'));
+}
+
+function bandLabel(b) { return `${b.lo}–${b.hi}`; }
+
+function bandsPanel(m) {
+  const all = [...m.bands, { ...m.overall, label: 'all' }];
+  const max = Math.max(1, ...all.map(b => b.stats.dwell_ms ? b.stats.dwell_ms.p90 : 0));
+  const tb = h('tbody');
+  for (const b of all) {
+    const d = b.stats.dwell_ms, thin = b.label !== 'all' && !b.usable;
+    const like = b.dwell_by_decision.like, pas = b.dwell_by_decision.pass;
+    tb.append(h('tr', { class: thin ? 'thin' : '' },
+      h('td', {}, b.label || bandLabel(b), thin ? ' (too few to sample)' : ''), h('td', {}, b.n), h('td', {}, pct(b.like_rate)),
+      h('td', { style: 'width:34%' }, d ? h('div', { class: 'range', title: `p10 ${secs(d.p10)} · median ${secs(d.p50)} · p90 ${secs(d.p90)}` },
+        h('div', { class: 'span', style: `left:${d.p10 / max * 100}%;width:${Math.max(0.5, (d.p90 - d.p10) / max * 100)}%` }),
+        h('div', { class: 'med', style: `left:${d.p50 / max * 100}%` })) : '–'),
+      h('td', {}, d ? secs(d.p50) : '–'), h('td', {}, like ? secs(like.p50) : '–'), h('td', {}, pas ? secs(pas.p50) : '–'),
+      h('td', {}, pct(b.hesitation_rate)), h('td', {}, b.breaks)));
+  }
+  return h('div', { class: 'panel' }, h('h2', {}, 'By preference score'),
+    h('div', { class: 'hint' }, 'Each row is the profiles your taste model scored in that range (out-of-fold, so a profile is never scored by a model that saw your verdict). The bar spans the 10th–90th percentile of time on the card, the tick is the median. Breaks (over 5 min) are counted but not treated as looking.'),
+    h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Score', 'Swipes', 'Liked', 'Time on card (p10–p90)', 'Median', 'Like', 'Pass', 'Hesitated', 'Breaks'].map(x => h('th', {}, x)))), tb)));
+}
+
+function featurePanel(m) {
+  const bands = [...m.bands, { ...m.overall, label: 'all' }];
+  const head = h('tr', {}, h('th', {}, 'Behaviour (median, 10–90% on hover)'), bands.map(b => h('th', { class: b.label !== 'all' && !b.usable ? 'thin' : '' }, b.label || bandLabel(b))));
+  const tb = h('tbody');
+  const groups = [
+    ['Timing', ['dwell_ms', 'attention_ms', 'first_input_ms', 'open_profile_ms']],
+    ['Pointer movement', ['n_moves', 'path_px', 'mean_speed', 'max_speed', 'end_speed_ratio', 'peak_decel', 'straightness', 'jitter', 'reversals', 'pauses', 'longest_pause_ms', 'pre_action_pause_ms']],
+    ['Scrolling', ['wheel_up', 'wheel_down', 'scroll_reversals']],
+    ['Keyboard and clicks', ['swipe_by_key', 'n_keys', 'key_hold_ms', 'n_clicks', 'n_gallery_next', 'n_gallery_prev', 'n_open_profile', 'click_rx', 'click_ry']],
+  ];
+  let any = false;
+  for (const [title, keys] of groups) {
+    const rows = keys.filter(k => bands.some(b => b.stats[k]));
+    if (!rows.length) continue;
+    tb.append(h('tr', { class: 'group' }, h('td', { colspan: bands.length + 1 }, title)));
+    for (const k of rows) {
+      any = true;
+      const info = m.features[k], mean = /^(n_|wheel_|swipe_by|pauses|reversals|scroll_rev)/.test(k);
+      tb.append(h('tr', {}, h('td', {}, info.label, info.browser_only ? h('small', { title: 'Only browser sessions (Tinder/Badoo) measure this' }, ' ᵇ') : ''),
+        bands.map(b => {
+          const d = b.stats[k], thin = b.label !== 'all' && !b.usable;
+          if (!d) return h('td', { class: 'na' }, '–');
+          const v = mean ? d.mean : d.p50;
+          return h('td', { class: thin ? 'thin' : '', title: `n=${d.n} · p10 ${fmt(k, d.p10)} · median ${fmt(k, d.p50)} · p90 ${fmt(k, d.p90)} · mean ${fmt(k, d.mean)}` }, fmt(k, v));
+        })));
+    }
+  }
+  const panel = h('div', { class: 'panel' }, h('h2', {}, 'Everything measured, per score band'),
+    h('div', { class: 'hint' }, 'ᵇ = only measured in browser capture; “–” means not measured (never zero-filled). Counts and the arrow-key share show means since their medians are mostly 0. Faded columns have too few swipes to trust.'));
+  panel.append(any ? h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, head), tb))
+    : h('div', { class: 'empty' }, 'Only timing has been captured so far (Hinge via proxy gives dwell, not pointer or scroll data).'));
+  return panel;
+}
+
+function fmt(k, v) {
+  const u = DATA.model.features[k].unit;
+  if (v == null) return '–';
+  if (u === 'ms') return secs(v);
+  if (u === 'px') return Math.round(v) + 'px';
+  if (k === 'swipe_by_key') return pct(v);
+  return Math.abs(v) < 10 ? (+v.toFixed(2)).toString() : v.toFixed(0);
+}
+
+function rhythmPanel(m) {
+  const r = m.rhythm, g = r.gap_ms, s = r.session_minutes;
+  const peak = Math.max(1, ...r.hour_hist);
+  const t = (n, label) => h('div', { class: 'tile' }, h('b', {}, n), h('span', {}, label));
+  return h('div', { class: 'panel' }, h('h2', {}, 'Session rhythm'),
+    h('div', { class: 'hint' }, 'Pacing across swipes, regardless of how the profile scored.'),
+    h('div', { class: 'tiles' },
+      t(g ? secs(g.p50) : '–', g ? `median gap between swipes (${secs(g.p10)}–${secs(g.p90)})` : 'gap between swipes'),
+      t(r.swipes_per_active_min ?? '–', 'swipes per active minute'), t(r.breaks, `breaks over ${m.break_ms / 60000} min`),
+      t(s ? s.p50.toFixed(1) + ' min' : '–', 'median session length'), t(r.swipes, 'swipes in sessions')),
+    h('div', { class: 'hint', style: 'margin-top:8px' }, 'Swipes by hour of day'),
+    h('div', { class: 'hours' }, r.hour_hist.map((n, i) => h('div', { style: `height:${n / peak * 100}%`, title: `${String(i).padStart(2, '0')}:00 · ${n}` }))),
+    h('div', { class: 'hourlab' }, r.hour_hist.map((_, i) => h('span', {}, i % 3 === 0 ? i : ''))));
+}
+
+/* ---------------- simulation ---------------- */
+const W = 300, H = 520, BTN = 58;
+const BUTTONS = { pass: { x: 62 + BTN / 2, y: H - 22 - BTN / 2 }, like: { x: W - 62 - BTN / 2, y: H - 22 - BTN / 2 } };
+const SCALE = 0.45;  // captured pointer paths come from a full browser window; shrink them to this window
+let sim = null;      // {events, path, D, ...} for the sample being shown
+let raf = 0;
+
+function simPanel(m) {
+  const w = h('div', { class: 'window', id: 'win' },
+    h('div', { class: 'photo', id: 'photo' }, '👤'),
+    h('div', { class: 'dots', id: 'dots' }),
+    h('div', { class: 'meta' }, 'Profile photo', h('small', {}, 'placeholder, no real data used')),
+    h('div', { class: 'more' }, h('div', { style: 'width:80%' }), h('div', { style: 'width:60%' }), h('div', { style: 'width:70%' }), h('div', { style: 'width:45%' })),
+    h('div', { class: 'key l', id: 'kl' }, '← pass'), h('div', { class: 'key r', id: 'kr' }, 'like →'),
+    h('div', { class: 'btn pass', id: 'bpass' }, '✕'), h('div', { class: 'btn like', id: 'blike' }, '♥'),
+    h('canvas', { id: 'cv', width: W * 2, height: H * 2, style: `width:${W}px;height:${H}px` }),
+    h('div', { class: 'cursor', id: 'cur' }), h('div', { class: 'stamp', id: 'stamp' }));
+  return h('div', { class: 'panel' }, h('h2', {}, 'Simulation: what you do at a given score'),
+    h('div', { class: 'hint' }, 'Pick a preference score (the taste model’s P(like) × 100 for a profile, e.g. 70 = 0.70). The window replays a made-up swipe built from the behaviour your model learned for profiles in that score band: time on the card, mouse path, pauses, photo clicks, scrolling, and how you finally press like or pass. “Typical” uses the band’s medians; “random” draws a different plausible swipe each time. Nothing here acts on any account.'),
+    h('div', { class: 'slider' }, h('span', { class: 'val', id: 'sval' }),
+      h('input', { type: 'range', id: 'score', min: 0, max: 100, value: 70 }),
+      h('select', { id: 'mode' }, h('option', { value: 'typical' }, 'Typical'), h('option', { value: 'random' }, 'Random sample')),
+      h('select', { id: 'speed' }, h('option', { value: 1 }, '1× speed'), h('option', { value: 2 }, '2×'), h('option', { value: 4 }, '4×'))),
+    h('div', { class: 'sim' }, h('div', {}, w, h('div', { class: 'clock', id: 'clock' }),
+      h('div', { class: 'simctl' }, h('button', { id: 'replay' }, '↻ Replay'), h('button', { id: 'another' }, '⟳ New sample'))),
+      h('div', {}, h('div', { class: 'basis', id: 'basis' }), h('ul', { class: 'timeline', id: 'tl' }))));
+}
+
+function initSim(m) {
+  let timer = 0;
+  const redo = () => { clearTimeout(timer); timer = setTimeout(() => newSample(m), 200); };
+  $('score').oninput = () => { $('sval').textContent = scoreText(); redo(); };
+  $('mode').onchange = $('speed').onchange = () => newSample(m);
+  $('replay').onclick = () => play();
+  $('another').onclick = () => { seed = (Math.random() * 2 ** 32) >>> 0; newSample(m); };
+  $('sval').textContent = scoreText();
+  newSample(m);
+}
+let seed = 12345;
+const scoreText = () => { const v = +$('score').value; return `${v}  (${(v / 100).toFixed(2)})`; };
+
+function bandFor(m, score) {
+  for (let i = 0; i < m.bands.length; i++) {
+    const b = m.bands[i];
+    if ((score >= b.lo && score < b.hi) || (i === m.bands.length - 1 && score === b.hi)) { if (b.usable) return [b, false]; }
+  }
+  return [m.overall, true];
+}
+
+function rng32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+
+function newSample(m) {
+  const score = +$('score').value, [band, fallback] = bandFor(m, score);
+  sim = generate(band, $('mode').value === 'typical', rng32(seed));
+  showBasis(band, fallback, score);
+  showTimeline();
+  play();
+}
+
+function generate(band, typical, r) {
+  const S = band.stats, med = (k, d) => S[k] ? S[k].p50 : d, mean = (k, d) => S[k] ? S[k].mean : d;
+  const count = k => { const x = mean(k, 0); return typical ? Math.round(x) : Math.floor(x) + (r() < x - Math.floor(x) ? 1 : 0); };
+  let D = band.log_dwell ? Math.exp(band.log_dwell[0] + (typical ? 0 : gauss(r) * band.log_dwell[1])) : med('dwell_ms', 4000);
+  D = Math.min(Math.max(D, 700), 90000);
+  const like = typical ? (band.like_rate ?? 0.5) >= 0.5 : r() < (band.like_rate ?? 0.5);
+  const byKey = S.swipe_by_key ? (typical ? S.swipe_by_key.mean >= 0.5 : r() < S.swipe_by_key.mean) : false;
+  const hasPointer = !!S.path_px && !byKey;
+  const hasInput = !!S.n_moves || !!S.n_keys || !!S.n_clicks;
+  const events = [{ t: 0, kind: 'start', text: 'Card appears' }];
+  const pre = Math.min(med('pre_action_pause_ms', 150), D * 0.25);
+  const first = Math.min(med('first_input_ms', D * 0.1), D * 0.5);
+  const moveEnd = D - pre;
+
+  // target: the chosen button (offset inside it where you usually click), or just resting on the card for a key swipe
+  const btn = BUTTONS[like ? 'like' : 'pass'];
+  const rx = med('click_rx', 0.5), ry = med('click_ry', 0.5);
+  const jx = typical ? 0 : gauss(r) * 0.12, jy = typical ? 0 : gauss(r) * 0.12;
+  const target = byKey ? { x: W * (0.4 + 0.2 * r()), y: 220 } : { x: btn.x + (clamp(rx + jx, 0.1, 0.9) - 0.5) * BTN * 0.9, y: btn.y + (clamp(ry + jy, 0.1, 0.9) - 0.5) * BTN * 0.9 };
+  const start = { x: W * (0.25 + 0.5 * r()), y: 60 + 80 * r() };
+  let path = [];
+  if (hasPointer) path = buildPath(start, target, med('path_px', 600) * SCALE, med('straightness', 0.5), mean('jitter', 0.3), r, typical);
+
+  // gallery / profile / scroll events
+  const nNext = count('n_gallery_next'), nPrev = count('n_gallery_prev');
+  const span = [first + 200, moveEnd - 300];
+  const at = () => span[0] + r() * Math.max(0, span[1] - span[0]);
+  const photoEv = [];
+  for (let i = 0; i < nNext; i++) photoEv.push({ t: at(), kind: 'photo', dir: 1, text: 'Clicks to the next photo' });
+  for (let i = 0; i < nPrev; i++) photoEv.push({ t: at(), kind: 'photo', dir: -1, text: 'Clicks back a photo' });
+  events.push(...photoEv);
+  if (mean('n_open_profile', 0) >= (typical ? 0.5 : r())) events.push({ t: Math.min(med('open_profile_ms', D * 0.4), moveEnd - 200), kind: 'open', text: 'Opens the full profile' });
+  const down = count('wheel_down'), up = count('wheel_up');
+  if (down) events.push({ t: at(), kind: 'scroll', text: up ? 'Scrolls down, then back up' : 'Scrolls down' });
+  else if (up) events.push({ t: at(), kind: 'scroll', text: 'Scrolls up' });
+
+  // pointer keyframes with pauses (hesitation = at least one 1s+ stop)
+  let keys = [];
+  if (hasPointer) {
+    let nP = Math.round(mean('pauses', 0));
+    const hesitates = (band.hesitation_rate ?? 0) >= (typical ? 0.5 : r());
+    if (hesitates && nP < 1) nP = 1;
+    const maxP = med('longest_pause_ms', 700);
+    const pauses = [];
+    for (let i = 0; i < nP; i++) pauses.push(Math.max(400, i === 0 && hesitates ? Math.max(1000, maxP) : maxP * (0.5 + 0.5 * r())));
+    keys = timeKeys(path, first, moveEnd, pauses, med('end_speed_ratio', 0.3), r, events);
+  }
+  if (!hasPointer && hasInput && !byKey) events.push({ t: first, kind: 'note', text: 'Starts interacting (no pointer path recorded)' });
+  if (hasPointer) events.push({ t: first, kind: 'note', text: 'Pointer starts moving' });
+  if (byKey) {
+    const kh = med('key_hold_ms', 90);
+    events.push({ t: moveEnd, kind: 'key', side: like ? 'r' : 'l', text: `Presses ${like ? '→' : '←'} (held ${Math.round(kh)}ms) to ${like ? 'like' : 'pass'}` });
+  } else if (hasPointer) {
+    events.push({ t: moveEnd, kind: 'note', text: `Slows to ${Math.round(clamp(med('end_speed_ratio', 0.3), 0, 1) * 100)}% of peak speed over the ${like ? 'like' : 'pass'} button` });
+  }
+  events.push({ t: D, kind: 'decide', like, text: byKey ? (like ? 'Liked' : 'Passed') : `${like ? 'Clicks like' : 'Clicks pass'}${hasPointer ? ` (${Math.round(rx * 100)}% across, ${Math.round(ry * 100)}% down the button)` : ''}` });
+  events.sort((a, b) => a.t - b.t);
+  return { D, like, byKey, hasPointer, hasInput, keys, events, moveEnd, pre, first, path };
+}
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+// Polyline from start to target whose length matches `len` (bounded by what straightness allows); wander amplitude is searched for.
+function buildPath(a, b, len, straight, jitter, r, typical) {
+  const N = 28, chord = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const want = clamp(len, chord * 1.02, chord * 6);
+  const ux = (b.x - a.x) / chord, uy = (b.y - a.y) / chord, px = -uy, py = ux;
+  const rr = typical ? rng32(7) : r;
+  const wob = [0]; for (let i = 1; i < N; i++) wob.push(wob[i - 1] * 0.7 + gauss(rr) * 0.6);
+  const toward = Array.from({ length: N + 1 }, (_, i) => i / N);
+  const make = A => toward.map((u, i) => {
+    const e = Math.sin(Math.PI * u), j = i === 0 || i === N ? 0 : gauss(rr) * jitter * 2.2;
+    return { x: a.x + ux * chord * u + px * (wob[Math.min(i, N - 1)] * A * e + j), y: a.y + uy * chord * u + py * (wob[Math.min(i, N - 1)] * A * e + j) };
+  });
+  const L = p => p.slice(1).reduce((s, q, i) => s + Math.hypot(q.x - p[i].x, q.y - p[i].y), 0);
+  let lo = 0, hi = 400, pts = make(0);
+  for (let i = 0; i < 18; i++) { const A = (lo + hi) / 2; pts = make(A); if (L(pts) < want) lo = A; else hi = A; }
+  return pts.map(p => ({ x: clamp(p.x, 6, W - 6), y: clamp(p.y, 6, H - 6) }));
+}
+
+// Spread the path over [t0, t1], slowing toward the end (more strongly the lower end_speed_ratio is) and inserting stops.
+function timeKeys(path, t0, t1, pauses, endRatio, r, events) {
+  const n = path.length - 1, floor = clamp(endRatio, 0.08, 1);
+  const seg = path.slice(1).map((q, i) => Math.hypot(q.x - path[i].x, q.y - path[i].y) || 0.01);
+  const total = seg.reduce((a, b) => a + b, 0);
+  let acc = 0; const w = seg.map((s, i) => { acc += s; const u = acc / total; return s / (u < 0.7 ? 1 : 1 - (1 - floor) * (u - 0.7) / 0.3); });
+  const wsum = w.reduce((a, b) => a + b, 0);
+  let pauseTotal = pauses.reduce((a, b) => a + b, 0);
+  const room = (t1 - t0) * 0.6;
+  const k = pauseTotal > room ? room / pauseTotal : 1;
+  pauses = pauses.map(p => p * k); pauseTotal *= k;
+  const idx = pauses.map(() => 3 + Math.floor(r() * Math.max(1, n - 8))).sort((a, b) => a - b);
+  const moveTime = Math.max(100, t1 - t0 - pauseTotal);
+  const keys = [{ t: t0, x: path[0].x, y: path[0].y }];
+  let t = t0, pi = 0;
+  for (let i = 0; i < n; i++) {
+    t += moveTime * w[i] / wsum;
+    keys.push({ t, x: path[i + 1].x, y: path[i + 1].y });
+    while (pi < idx.length && idx[pi] === i + 1) {
+      events.push({ t, kind: 'note', text: `Stops moving for ${(pauses[pi] / 1000).toFixed(1)}s${pauses[pi] >= 1000 ? ' (hesitates)' : ''}` });
+      t += pauses[pi]; keys.push({ t, x: path[i + 1].x, y: path[i + 1].y }); pi++;
+    }
+  }
+  const last = keys[keys.length - 1]; last.t = Math.min(last.t, t1);
+  return keys;
+}
+
+function at(keys, t) {
+  if (!keys.length) return null;
+  if (t <= keys[0].t) return keys[0];
+  for (let i = 1; i < keys.length; i++) {
+    if (t <= keys[i].t) { const a = keys[i - 1], b = keys[i], u = (t - a.t) / Math.max(1, b.t - a.t); return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u }; }
+  }
+  return keys[keys.length - 1];
+}
+
+function showBasis(band, fallback, score) {
+  const d = band.stats.dwell_ms, el = $('basis');
+  const name = band === DATA.model.overall ? 'all scores' : `scores ${band.lo}–${band.hi}`;
+  el.replaceChildren(h('b', {}, `Built from ${name}`), ` · ${band.n} of your swipes`, ` · you liked ${pct(band.like_rate)} · median time on the card ${d ? secs(d.p50) : '–'}`);
+  if (fallback) el.append(h('div', { class: 'warn' }, `Too few swipes in the ${score} band, so this uses the pooled behaviour across all scores.`));
+  if (!sim.hasInput) el.append(h('div', { class: 'warn' }, 'Only timing is known for this data (no pointer, scroll or click events), so just the wait and the decision are shown.'));
+  else if (!sim.hasPointer && sim.byKey) el.append(h('div', { style: 'color:var(--muted)' }, 'You mostly swipe with the arrow keys here, so the pointer rests on the card.'));
+}
+
+function showTimeline() {
+  const ul = $('tl'); ul.replaceChildren();
+  sim.events.forEach((e, i) => { const li = h('li', { id: 'ev' + i }, h('b', {}, secs(e.t)), e.text); ul.append(li); e.i = i; });
+}
+
+function stopSim() { cancelAnimationFrame(raf); raf = 0; }
+
+function play() {
+  stopSim();
+  if (!sim) return;
+  const speed = +$('speed').value, cv = $('cv'), ctx = cv.getContext('2d'), cur = $('cur'), win = $('win');
+  const photo = $('photo'), dots = $('dots');
+  const COLORS = ['#c97b84', '#7b9ec9', '#8cc9a0', '#c9b27b', '#a07bc9'];
+  let photoIdx = 0; const nDots = 5;
+  const drawDots = () => dots.replaceChildren(...Array.from({ length: nDots }, (_, i) => h('i', { class: i === photoIdx ? 'on' : '' })));
+  const reset = () => {
+    photoIdx = 0; drawDots(); photo.style.background = COLORS[0];
+    win.classList.remove('opened', 'scrolled'); $('stamp').className = 'stamp';
+    for (const id of ['bpass', 'blike', 'kl', 'kr']) $(id).classList.remove('press');
+    cur.style.display = 'none'; ctx.clearRect(0, 0, cv.width, cv.height);
+    sim.events.forEach(e => { e.fired = false; const li = $('ev' + e.i); if (li) li.classList.remove('done'); });
+  };
+  reset();
+  const t0 = performance.now();
+  const frame = now => {
+    const t = Math.min(sim.D, (now - t0) * speed);
+    $('clock').textContent = `${(t / 1000).toFixed(1)}s of ${(sim.D / 1000).toFixed(1)}s`;
+    for (const e of sim.events) {
+      if (e.fired || e.t > t) continue;
+      e.fired = true; const li = $('ev' + e.i); if (li) li.classList.add('done');
+      if (e.kind === 'photo') { photoIdx = (photoIdx + e.dir + nDots) % nDots; drawDots(); photo.style.background = COLORS[photoIdx]; }
+      else if (e.kind === 'open') win.classList.add('opened');
+      else if (e.kind === 'scroll') { win.classList.add('scrolled'); setTimeout(() => win.classList.remove('scrolled'), 400 / speed); }
+      else if (e.kind === 'key') $(e.side === 'r' ? 'kr' : 'kl').classList.add('press');
+      else if (e.kind === 'decide') {
+        $(e.like ? 'blike' : 'bpass').classList.add('press');
+        const s = $('stamp'); s.textContent = e.like ? 'LIKE' : 'PASS'; s.className = 'stamp show ' + (e.like ? 'like' : 'pass');
+      }
+    }
+    if (sim.keys.length) {
+      const p = at(sim.keys, Math.min(t, sim.moveEnd + sim.pre));
+      cur.style.display = t >= sim.first ? 'block' : 'none'; cur.style.left = p.x + 'px'; cur.style.top = p.y + 'px';
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(59,111,212,.55)'; ctx.beginPath();
+      let started = false;
+      for (const k of sim.keys) { if (k.t > t) break; if (!started) { ctx.moveTo(k.x * 2, k.y * 2); started = true; } else ctx.lineTo(k.x * 2, k.y * 2); }
+      if (started) ctx.lineTo(p.x * 2, p.y * 2);
+      ctx.stroke();
+    }
+    if (t < sim.D) raf = requestAnimationFrame(frame); else raf = 0;
+  };
+  raf = requestAnimationFrame(frame);
+}
+
+load();
+</script>
+</body>
+</html>
