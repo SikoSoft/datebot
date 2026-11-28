@@ -245,6 +245,15 @@ def create_app() -> FastAPI:
                 raise HTTPException(400, str(e))
         return get_behavior(name)
 
+    @app.get("/api/behavior/replay")
+    def behavior_replay(lo: float = 0, hi: float = 100, source: str | None = None, liked: bool | None = None,
+                        index: int = 0, pref: str = "default"):
+        """One of your own recorded swipes in a preference-score range, to replay in the Behaviour page (stays local)."""
+        from datebot import behavior_model, embed
+
+        with db.session() as conn:
+            return behavior_model.replay(conn, embed.EMBED_ID, source or None, lo, hi, liked, index, pref)
+
     @app.get("/behavior")
     def behavior_page():
         return FileResponse(STATIC / "behavior.html")

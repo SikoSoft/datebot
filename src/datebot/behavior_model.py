@@ -378,3 +378,81 @@ def describe(m: BehaviorModel) -> dict:
     d["features"] = {k: {"label": v[0], "unit": v[1], "browser_only": v[2]} for k, v in FEATURE_INFO.items()}
     d["min_band"], d["break_ms"] = MIN_BAND, BREAK_MS
     return d
+
+
+# ---- replaying one of your real swipes (display only) -------------------------------------------------------------
+
+CAL_LABELS = ("pass", "like", "gallery_next", "gallery_prev")
+
+
+def _median_xy(points: list[tuple[float, float]]) -> list[float] | None:
+    return [float(np.median([p[0] for p in points])), float(np.median([p[1] for p in points]))] if points else None
+
+
+def calibration(rows: list[sqlite3.Row], session_id: int | None) -> dict[str, list[float]]:
+    """Where the pass/like buttons and the photo's next/back arrows were on your screen, from where you clicked them.
+
+    Medians of the labelled clicks in the same session (window size can change between sessions), falling back to all
+    of `rows` per label. Lets the page map real pointer coordinates onto its phone window."""
+    pts: dict[str, dict[bool, list[tuple[float, float]]]] = {k: {True: [], False: []} for k in CAL_LABELS}
+    for r in rows:
+        same = r["session_id"] == session_id
+        for e in db.raw_of(r).get("events") or []:
+            if e["k"] == "c" and "x" in e:
+                label = behavior.target_label(e.get("tg"))
+                if label in pts:
+                    pts[label][same].append((e["x"], e["y"]))
+    out = {}
+    for k, by in pts.items():
+        m = _median_xy(by[True]) or _median_xy(by[False])
+        if m:
+            out[k] = m
+    return out
+
+
+def replay_events(raw: dict) -> list[dict]:
+    """The stored events of one interaction, relative to the card appearing and stripped to what a replay needs
+    (positions, wheel direction, arrow-key names, and each click's label; no element descriptors)."""
+    start, decided = float(raw["start"]), float(raw["decided"])
+    out = []
+    for e in sorted((e for e in raw.get("events") or [] if start <= e["t"] <= decided + 50), key=lambda e: e["t"]):
+        ev: dict = {"t": round(e["t"] - start), "k": e["k"]}
+        if e["k"] == "m":
+            ev.update(x=e["x"], y=e["y"])
+        elif e["k"] == "w":
+            ev["dy"] = 1 if e.get("dy", 0) > 0 else -1 if e.get("dy", 0) < 0 else 0
+        elif e["k"] in ("kd", "ku"):
+            ev["key"] = e.get("key", "")
+        elif e["k"] == "c":
+            ev.update(x=e.get("x"), y=e.get("y"), label=behavior.target_label(e.get("tg")))
+        elif e["k"] == "f":
+            ev["v"] = e.get("v", 1)
+        out.append(ev)
+    return out
+
+
+def replay(conn: sqlite3.Connection, embed_model: str, source: str | None, lo: float, hi: float,
+           liked: bool | None, index: int, pref_name: str = "default") -> dict:
+    """One of your own recorded swipes whose preference score is in [lo, hi] (hi inclusive at 100), for the Behaviour page.
+
+    `index` steps through the matches (modulo their count) in a stable order. Only origin 'app' interactions that have
+    input events and were a look (not a break) are candidates."""
+    scores = preference_scores(conn, embed_model, pref_name)
+    rows = [r for r in db.interactions(conn, origin="app") if source in (None, "", r["source"])]
+    cands = []
+    for r in rows:
+        s = scores.get(r["profile_id"])
+        if s is None or not (lo <= s < hi or (hi >= 100 and s == hi)):
+            continue
+        if liked is not None and r["liked"] != int(liked):
+            continue
+        f = json.loads(r["features"])
+        if "n_events" in f and f["dwell_ms"] <= BREAK_MS:
+            cands.append((r, s))
+    if not cands:
+        return {"count": 0}
+    r, s = cands[index % len(cands)]
+    raw = db.raw_of(r)
+    return {"count": len(cands), "index": index % len(cands), "id": r["id"], "source": r["source"], "score": round(s, 1),
+            "liked": None if r["liked"] is None else bool(r["liked"]), "dwell_ms": round(raw["decided"] - raw["start"]),
+            "events": replay_events(raw), "calibration": calibration(rows, r["session_id"])}

@@ -272,6 +272,7 @@ function simPanel(m) {
     h('div', { class: 'hint' }, 'Pick a preference score (the taste model’s P(like) × 100 for a profile, e.g. 70 = 0.70). The window replays a made-up swipe built from the behaviour your model learned for profiles in that score band: time on the card, mouse path, pauses, photo clicks, scrolling, and how you finally press like or pass. “Typical” uses the band’s medians; “random” draws a different plausible swipe each time. Nothing here acts on any account.'),
     h('div', { class: 'slider' }, h('span', { class: 'val', id: 'sval' }),
       h('input', { type: 'range', id: 'score', min: 0, max: 100, value: 70 }),
+      h('select', { id: 'origin', title: 'Replay one of your own recorded swipes from this score band instead of a generated one' }, h('option', { value: 'sim' }, 'Simulated swipe'), h('option', { value: 'real' }, 'Replay a real swipe')),
       h('select', { id: 'mode' }, h('option', { value: 'typical' }, 'Typical'), h('option', { value: 'random' }, 'Random sample')),
       h('select', { id: 'decision', title: 'Force the outcome, or let the learned like rate decide' }, h('option', { value: 'auto' }, 'Decision: by like rate'), h('option', { value: 'like' }, 'Decision: like'), h('option', { value: 'pass' }, 'Decision: pass')),
       h('select', { id: 'speed' }, h('option', { value: 1 }, '1× speed'), h('option', { value: 2 }, '2×'), h('option', { value: 4 }, '4×'))),
@@ -284,7 +285,7 @@ function initSim(m) {
   let timer = 0;
   const redo = () => { clearTimeout(timer); timer = setTimeout(() => newSample(m), 200); };
   $('score').oninput = () => { $('sval').textContent = scoreText(); redo(); };
-  $('mode').onchange = $('speed').onchange = $('decision').onchange = () => newSample(m);
+  $('mode').onchange = $('speed').onchange = $('decision').onchange = $('origin').onchange = () => newSample(m);
   $('replay').onclick = () => play();
   $('another').onclick = () => { seed = (Math.random() * 2 ** 32) >>> 0; newSample(m); };
   $('sval').textContent = scoreText();
@@ -313,11 +314,33 @@ function likeProb(m, score, band) {
   return pts[pts.length - 1][1];
 }
 
-function newSample(m) {
+let token = 0;
+async function newSample(m) {
+  const mine = ++token;
   const score = +$('score').value, [band, fallback] = bandFor(m, score);
   const pLike = likeProb(m, score, band);
+  const real = $('origin').value === 'real';
+  $('mode').disabled = real;
+  let missing = false;
+  if (real) {
+    const dec = $('decision').value, whole = band === m.overall;
+    const q = new URLSearchParams({ lo: whole ? 0 : band.lo, hi: whole ? 100 : band.hi, index: seed % 100000, source: SRC });
+    if (dec !== 'auto') q.set('liked', dec === 'like');
+    const d = await (await fetch('/api/behavior/replay?' + q)).json();
+    if (mine !== token) return;  // the slider moved on while this was loading
+    if (d.count) {
+      sim = realSim(d);
+      const el = $('basis');
+      el.replaceChildren(h('b', {}, `Replaying one of your real swipes`), ` · #${d.index + 1} of ${d.count} recorded in ${whole ? 'all scores' : `${band.lo}–${band.hi}`}${dec !== 'auto' ? ` where you ${dec === 'like' ? 'liked' : 'passed'}` : ''}`,
+        h('div', {}, `${d.source} · scored ${d.score} · you ${d.liked ? 'liked' : 'passed'} it · ${secs(d.dwell_ms)} on the card · ${sim.keys.length} pointer samples`),
+        h('div', { style: 'color:var(--muted)' }, 'Real movements scaled onto the window (button and photo-arrow positions are taken from where you clicked them). Press “New sample” for another.'));
+      showTimeline(); play(); return;
+    }
+    missing = true;
+  }
   sim = generate(band, $('mode').value === 'typical', rng32(seed), pLike, $('decision').value);
   showBasis(band, fallback, score, pLike);
+  if (missing) $('basis').append(h('div', { class: 'warn' }, 'No recorded swipes with pointer data match this band and decision (Hinge only has timing), so this is a generated one.'));
   showTimeline();
   play();
 }
@@ -475,6 +498,53 @@ function showTimeline() {
   sim.events.forEach((e, i) => { const li = h('li', { id: 'ev' + i }, h('b', {}, secs(e.t)), e.text); ul.append(li); e.i = i; });
 }
 
+// Turn one recorded swipe (see behavior_model.replay) into the same shape `generate` produces, so `play` can show it.
+function realSim(d) {
+  const ev = d.events, D = Math.max(1, d.dwell_ms), cal = d.calibration || {};
+  const moves = ev.filter(e => e.k === 'm');
+  const mid = a => a.slice().sort((p, q) => p - q)[a.length >> 1];
+  // real screen px -> window px, anchored on where you clicked pass/like (x) and pass/like vs the photo arrows (y)
+  const P = cal.pass, L = cal.like, N = cal.gallery_next, V = cal.gallery_prev;
+  let sx = 0.3, sy = 0.3, ax = mid(moves.map(e => e.x)), ay = mid(moves.map(e => e.y)), wx = W / 2, wy = H / 2;
+  if (P && L && L[0] - P[0] > 40) { sx = clamp((BUTTONS.like.x - BUTTONS.pass.x) / (L[0] - P[0]), 0.1, 1.2); ax = P[0]; wx = BUTTONS.pass.x; }
+  const by = [P, L].filter(Boolean).map(p => p[1]), gy = [N, V].filter(Boolean).map(p => p[1]);
+  if (by.length && gy.length && mid(by) - mid(gy) > 40) { sy = clamp((BUTTONS.pass.y - 190) / (mid(by) - mid(gy)), 0.1, 1.2); ay = mid(by); wy = BUTTONS.pass.y; }
+  const X = x => clamp(wx + (x - ax) * sx, 0, W), Y = y => clamp(wy + (y - ay) * sy, 0, H);
+  const keys = moves.map(e => ({ t: e.t, x: X(e.x), y: Y(e.y) }));
+  const events = [{ t: 0, kind: 'start', text: 'Card appears' }];
+  if (moves.length) events.push({ t: moves[0].t, kind: 'note', text: 'Pointer starts moving' });
+  let decidedBy = null, last = null;
+  for (const e of ev) {
+    if (e.k === 'c') {
+      if (e.label === 'gallery_next') events.push({ t: e.t, kind: 'photo', dir: 1, text: 'Clicks next photo' });
+      else if (e.label === 'gallery_prev') events.push({ t: e.t, kind: 'photo', dir: -1, text: 'Clicks back a photo' });
+      else if (e.label === 'open_profile') events.push({ t: e.t, kind: 'open', text: 'Clicks the photo to open the profile' });
+      else if (e.label === 'like' || e.label === 'pass') decidedBy = e.label;
+      else events.push({ t: e.t, kind: 'tap', text: 'Clicks something else' });
+    } else if (e.k === 'kd' && /^Arrow(Left|Right)$/.test(e.key)) {
+      decidedBy = 'key'; events.push({ t: e.t, kind: 'key', side: e.key === 'ArrowRight' ? 'r' : 'l', text: `Presses ${e.key === 'ArrowRight' ? '→' : '←'}` });
+    } else if (e.k === 'f') events.push({ t: e.t, kind: 'note', text: e.v ? 'Returns to the window' : 'Switches away from the window' });
+    if (['m', 'w', 'kd', 'c'].includes(e.k)) {
+      if (last != null && e.t - last >= 1000) events.push({ t: last, kind: 'note', text: `Stops for ${((e.t - last) / 1000).toFixed(1)}s${e.t - last >= 1000 ? ' (hesitates)' : ''}` });
+      last = e.t;
+    }
+  }
+  // wheel ticks arrive in the hundreds: one scroll event per burst, with its net direction
+  let run = null;
+  const flush = () => { if (run) events.push({ t: run.t, kind: 'scroll', text: run.dy > 0 ? 'Scrolls down' : 'Scrolls up' }); run = null; };
+  for (const e of ev.filter(e => e.k === 'w')) {
+    if (run && e.t - run.last > 500) flush();
+    if (!run) run = { t: e.t, dy: 0, last: e.t };
+    run.dy += e.dy; run.last = e.t;
+  }
+  flush();
+  const like = d.liked != null ? d.liked : decidedBy === 'like';
+  events.push({ t: D, kind: 'decide', like, text: `${like ? 'Likes' : 'Passes'}${decidedBy === 'like' || decidedBy === 'pass' ? ' (clicks the button)' : decidedBy === 'key' ? ' (arrow key)' : ''}` });
+  events.sort((a, b) => a.t - b.t);
+  const lastMove = moves.length ? moves[moves.length - 1].t : 0;
+  return { D, like, byKey: decidedBy === 'key', hasPointer: moves.length > 0, hasInput: true, keys, events, moveEnd: lastMove, pre: Math.max(0, D - lastMove), first: moves.length ? moves[0].t : 0, real: d };
+}
+
 function stopSim() { cancelAnimationFrame(raf); raf = 0; }
 
 function play() {
@@ -500,7 +570,7 @@ function play() {
     for (const e of sim.events) {
       if (e.fired || e.t > t) continue;
       e.fired = true; const li = $('ev' + e.i); if (li) li.classList.add('done');
-      if (e.kind === 'photo' || e.kind === 'open') { cur.classList.add('tap'); setTimeout(() => cur.classList.remove('tap'), 160 / speed); }
+      if (e.kind === 'photo' || e.kind === 'open' || e.kind === 'tap') { cur.classList.add('tap'); setTimeout(() => cur.classList.remove('tap'), 160 / speed); }
       if (e.kind === 'photo') { photoIdx = (photoIdx + e.dir + nDots) % nDots; drawDots(); photo.style.background = COLORS[photoIdx]; }
       else if (e.kind === 'open') win.classList.add('opened');
       else if (e.kind === 'scroll') { win.classList.add('scrolled'); setTimeout(() => win.classList.remove('scrolled'), 400 / speed); }

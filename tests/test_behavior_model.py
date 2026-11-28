@@ -156,3 +156,23 @@ def test_describe_is_json_ready(conn, monkeypatch):
     m = train(conn, monkeypatch, seeded(conn, [(90, 8)] * 10))
     d = json.loads(json.dumps(bm.describe(m)))
     assert d["bands"][-1]["usable"] and not d["bands"][0]["usable"] and "dwell_ms" in d["features"]
+
+
+def test_replay_returns_a_real_swipe_in_range_without_element_descriptors(conn, monkeypatch):
+    sid = db.start_session(conn, "tinder", "desktop-chrome", 0.0)
+    ev = [{"t": 100.0, "k": "m", "x": 500, "y": 600}, {"t": 900.0, "k": "m", "x": 640, "y": 610},
+          {"t": 1500.0, "k": "c", "x": 640, "y": 380, "tg": {"tag": "button", "al": "next photo", "tx": "secret bio"}},
+          {"t": 2900.0, "k": "c", "x": 700, "y": 650, "tg": {"al": "like"}}]
+    scores = {}
+    for i in range(1, 4):
+        pid = db.add_profile(conn, "tinder", [], external_id=str(i))
+        scores[pid] = 80.0 if i < 3 else 10.0
+        add(conn, sid, pid, 3.0, liked=i != 2, source="tinder", events=ev)
+    monkeypatch.setattr(bm, "preference_scores", lambda *a, **k: scores)
+    d = bm.replay(conn, "embed", "tinder", 70, 100, None, 0)
+    assert d["count"] == 2 and d["source"] == "tinder" and d["score"] == 80.0
+    assert [e["label"] for e in d["events"] if e["k"] == "c"] == ["gallery_next", "like"]
+    assert "tg" not in json.dumps(d["events"]) and "secret" not in json.dumps(d)
+    assert d["calibration"]["gallery_next"] == [640.0, 380.0]
+    assert bm.replay(conn, "embed", "tinder", 70, 100, False, 5)["count"] == 1  # only the passed one; index wraps
+    assert bm.replay(conn, "embed", "hinge", 70, 100, None, 0) == {"count": 0}
