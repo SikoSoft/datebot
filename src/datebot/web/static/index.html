@@ -166,7 +166,9 @@ function step(d) {
 }
 
 async function load() {
-  const r = await api('/api/next');
+  const want = new URLSearchParams(location.search).get('profile');  // from Browse: "Rate this profile"
+  if (want) history.replaceState(null, '', location.pathname);  // only pins the first card
+  const r = await api('/api/next' + (want ? '?profile_id=' + encodeURIComponent(want) : ''));
   current = r.profile; photoIdx = 0;
   renderStats(r.stats); render();
 }

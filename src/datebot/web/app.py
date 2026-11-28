@@ -106,10 +106,18 @@ def create_app() -> FastAPI:
             return out
 
     @app.get("/api/next")
-    def next_profile(model_name: str = "default"):
-        """Next profile to rate: the model's most uncertain pick if a model exists, else oldest unrated."""
+    def next_profile(model_name: str = "default", profile_id: int | None = None):
+        """Next profile to rate: the model's most uncertain pick if a model exists, else oldest unrated.
+
+        With profile_id (the Browse page's "Rate this profile"), that profile is returned instead, as long as it
+        exists and is still unrated; otherwise this falls back to the normal pick.
+        """
         with db.session() as conn:
             trained = model.load(model_name)
+            if profile_id is not None and profile_id in db.unrated_profile_ids(conn):
+                picks = model.most_uncertain(conn, trained, 1, candidates=[profile_id]) if trained else []
+                return {"profile": _card(conn, *(picks[0] if picks else (profile_id, None))),
+                        "stats": _stats(conn), "model_active": trained is not None}
             eligible = filters.eligible_unrated(conn)  # hard filters: hidden profiles are never shown
             card = None
             if trained:
