@@ -38,3 +38,27 @@
   }
   document.body.prepend(nav);
 })();
+
+// Shared by the rate, review and browse cards: the saved profile details (location, work, prompts, ...) as a block.
+// `compact` clips long sections so list cards stay short.
+window.renderDetails = (details, compact) => {
+  const box = document.createElement('div');
+  box.className = 'pdetails';
+  for (const d of details || []) {
+    const row = document.createElement('div');
+    const label = document.createElement('b');
+    label.textContent = d.label + ' ';
+    row.append(label);
+    const lines = compact ? d.lines.slice(0, 2) : d.lines;
+    const text = document.createElement('span');
+    text.textContent = lines.join(d.label === 'Prompts' ? '  |  ' : ' · ') + (compact && d.lines.length > 2 ? ' …' : '');
+    row.append(text);
+    box.append(row);
+  }
+  return box;
+};
+const _pdStyle = document.createElement('style');
+_pdStyle.textContent = `.pdetails { margin:8px 0; font-size:13px; line-height:1.45; }
+  .pdetails > div { margin:3px 0; overflow-wrap:anywhere; white-space:pre-wrap; }
+  .pdetails b { color:var(--muted, #777); font-weight:600; }`;
+document.head.append(_pdStyle);

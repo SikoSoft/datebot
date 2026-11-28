@@ -96,6 +96,7 @@ function item(p, kind) {
     row.append(el('span', 'hint', p.at));
     body.append(row);
   }
+  body.append(renderDetails(p.details, true));
   if (p.bio) body.append(el('p', null, p.bio.length > 220 ? p.bio.slice(0, 220) + '…' : p.bio));
   const row = el('div', 'row');
   if (kind === 'auto' && p.yours != null) {

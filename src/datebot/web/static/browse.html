@@ -121,6 +121,7 @@ async function show() {
   meta.append(el('span', 'tag ' + (d.yours == null ? 'none' : d.yours ? 'like' : 'pass'), d.yours == null ? 'unrated' : d.yours ? 'liked' : 'passed'));
   if (p.url) { const a = el('a', '', ` · open in ${p.source} ↗`); a.href = p.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; meta.append(a); }
   card.append(meta);
+  card.append(renderDetails(p.details));
   card.append(el('p', 'bio', p.bio || ''));  // always present so the card height never changes
   if (d.why) card.append(why(d.why));
   else card.append(el('div', 'why hint', d.model_active ? 'No embeddings for this profile yet (run datebot embed).' : 'No trained model yet: run train first.'));
