@@ -136,3 +136,23 @@ def test_pointer_features_show_up_in_bands(conn, monkeypatch):
     m = train(conn, monkeypatch, scores)
     assert m.overall.stats["n_moves"].p50 == 5 and m.overall.stats["wheel_down"].p50 == 1
     assert m.overall.hesitation_rate == 1.0  # 100ms moves then a 6.5s silence before the wheel, then the swipe
+
+
+def test_heuristics_compare_lowest_and_highest_usable_bands(conn, monkeypatch):
+    data = [(85 + i % 10, 12 + i % 3) for i in range(10)] + [(10 + i, 3 + i % 2) for i in range(10)]
+    m = train(conn, monkeypatch, seeded(conn, data))
+    rules = bm.heuristics(m)
+    assert rules[0]["feature"] == "like_rate" and rules[0]["direction"] == "up"
+    dwell = next(r for r in rules if r["feature"] == "dwell_ms")
+    assert dwell["direction"] == "up" and "70-100" in dwell["text"] and "0-30" in dwell["text"]
+
+
+def test_heuristics_need_two_usable_bands(conn, monkeypatch):
+    m = train(conn, monkeypatch, seeded(conn, [(90, 8)] * 10))
+    assert bm.heuristics(m) == []
+
+
+def test_describe_is_json_ready(conn, monkeypatch):
+    m = train(conn, monkeypatch, seeded(conn, [(90, 8)] * 10))
+    d = json.loads(json.dumps(bm.describe(m)))
+    assert d["bands"][-1]["usable"] and not d["bands"][0]["usable"] and "dwell_ms" in d["features"]

@@ -26,7 +26,7 @@ import numpy as np
 
 from datebot import behavior, config, db, evaluate, model
 
-MODEL_VERSION = 1  # bump when the stored structure changes; older saved behaviour models are ignored and must be retrained
+MODEL_VERSION = 2  # bump when the stored structure changes; older saved behaviour models are ignored and must be retrained
 BAND_EDGES = (0.0, 30.0, 50.0, 70.0, 100.0)
 MIN_BAND = 8                 # a band with fewer interactions is shown but not used for sampling
 MIN_TOTAL = 10               # interactions with a score needed to train at all
@@ -35,8 +35,40 @@ STAT_FEATURES = (
     "dwell_ms", "attention_ms", "first_input_ms", "n_moves", "path_px", "mean_speed", "max_speed", "end_speed_ratio",
     "peak_decel", "straightness", "jitter", "reversals", "pauses", "longest_pause_ms", "pre_action_pause_ms",
     "wheel_up", "wheel_down", "scroll_reversals", "key_hold_ms", "n_clicks", "n_gallery_next", "n_gallery_prev",
-    "n_open_profile", "open_profile_ms",
+    "n_open_profile", "open_profile_ms", "swipe_by_key", "n_keys", "click_rx", "click_ry",
 )
+# key -> (label, unit, "browser" if only browser sessions measure it). Used by the UI page and `heuristics`.
+FEATURE_INFO: dict[str, tuple[str, str, bool]] = {
+    "dwell_ms": ("Time on the card", "ms", False),
+    "attention_ms": ("Time with the window focused", "ms", True),
+    "first_input_ms": ("Time before first input", "ms", True),
+    "n_moves": ("Pointer movements", "", True),
+    "path_px": ("Pointer path length", "px", True),
+    "mean_speed": ("Mean pointer speed", "px/ms", True),
+    "max_speed": ("Peak pointer speed", "px/ms", True),
+    "end_speed_ratio": ("Speed at the swipe vs peak (0 = stopped)", "", True),
+    "peak_decel": ("Peak deceleration", "", True),
+    "straightness": ("Path straightness (1 = straight line)", "", True),
+    "jitter": ("Direction jitter (mean turn, rad)", "", True),
+    "reversals": ("Sharp direction reversals", "", True),
+    "pauses": ("Pauses in input", "", True),
+    "longest_pause_ms": ("Longest pause", "ms", True),
+    "pre_action_pause_ms": ("Pointer still before the swipe", "ms", True),
+    "wheel_up": ("Scroll ticks up", "", True),
+    "wheel_down": ("Scroll ticks down", "", True),
+    "scroll_reversals": ("Scroll direction reversals", "", True),
+    "key_hold_ms": ("Arrow-key hold", "ms", True),
+    "n_keys": ("Arrow-key presses", "", True),
+    "swipe_by_key": ("Swipes with an arrow key (rest: click)", "", True),
+    "n_clicks": ("Clicks", "", True),
+    "n_gallery_next": ("Next-photo clicks", "", True),
+    "n_gallery_prev": ("Previous-photo clicks", "", True),
+    "n_open_profile": ("Open-profile clicks", "", True),
+    "open_profile_ms": ("Time until profile opened", "ms", True),
+    "click_rx": ("Click position in button, left to right (0-1)", "", True),
+    "click_ry": ("Click position in button, top to bottom (0-1)", "", True),
+}
+HEURISTIC_CHANGE = 0.25      # a feature must differ by this much (relative) between the lowest and highest band to be called out
 
 
 @dataclass
@@ -275,3 +307,74 @@ def format_report(m: BehaviorModel) -> str:
     if r["swipes"]:
         out.append("  busiest hours: " + ", ".join(f"{h:02d}:00 ({r['hour_hist'][h]})" for h in busy if r["hour_hist"][h]))
     return "\n".join(out)
+
+
+def _spoken(key: str, v: float) -> str:
+    unit = FEATURE_INFO[key][1]
+    if unit == "ms":
+        return f"{v / 1000:.2f}s" if abs(v) < 1000 else f"{v / 1000:.1f}s"
+    if unit == "px":
+        return f"{v:.0f}px"
+    return f"{v:.2f}" if abs(v) < 10 else f"{v:.1f}"
+
+
+def heuristics(m: BehaviorModel) -> list[dict]:
+    """Plain-language rules read off the model: how each behaviour changes between your lowest- and highest-scored
+    profiles. Only bands with MIN_BAND interactions are compared; a rule needs a HEURISTIC_CHANGE relative difference.
+    Each is {"text", "feature", "direction": up|down|flat, "strength"} (for ordering: like rate and hesitation first, then the biggest relative changes)."""
+    usable = [b for b in m.bands if b.n >= MIN_BAND]
+    out: list[dict] = []
+    if len(usable) < 2:
+        return out
+    lo, hi = usable[0], usable[-1]
+    names = (f"{lo.lo:.0f}-{lo.hi:.0f}", f"{hi.lo:.0f}-{hi.hi:.0f}")
+    if lo.like_rate is not None and hi.like_rate is not None and abs(hi.like_rate - lo.like_rate) >= 0.1:
+        out.append({"text": f"You like {hi.like_rate:.0%} of profiles scored {names[1]} but {lo.like_rate:.0%} of those scored {names[0]}.",
+                    "feature": "like_rate", "direction": "up" if hi.like_rate > lo.like_rate else "down",
+                    "strength": abs(hi.like_rate - lo.like_rate)})
+    if lo.hesitation_rate is not None and hi.hesitation_rate is not None and abs(hi.hesitation_rate - lo.hesitation_rate) >= 0.1:
+        up = hi.hesitation_rate > lo.hesitation_rate
+        out.append({"text": f"You hesitate (a 1s+ stop, then more input) on {hi.hesitation_rate:.0%} of {names[1]} profiles versus "
+                            f"{lo.hesitation_rate:.0%} of {names[0]} ones.",
+                    "feature": "hesitation", "direction": "up" if up else "down",
+                    "strength": abs(hi.hesitation_rate - lo.hesitation_rate)})
+    for key, (label, _unit, _browser) in FEATURE_INFO.items():
+        a, b = lo.stats.get(key), hi.stats.get(key)
+        if not a or not b or min(a.n, b.n) < MIN_BAND // 2:
+            continue
+        # counts are mostly 0 or 1, where the median hides the effect: compare means for those
+        count = key.startswith(("n_", "wheel_", "swipe_by")) or key in ("pauses", "reversals", "scroll_reversals")
+        x, y = (a.mean, b.mean) if count else (a.p50, b.p50)
+        base = max(abs(x), abs(y))
+        if base < 1e-9 or (count and base < 0.1):
+            continue
+        change = (y - x) / max(abs(x), 1e-9) if abs(x) > 1e-9 else float("inf")
+        if abs(y - x) / base < HEURISTIC_CHANGE:
+            continue
+        up = y > x
+        word = "more" if up else "less"
+        out.append({"text": f"{label}: {_spoken(key, y)} on {names[1]} profiles vs {_spoken(key, x)} on {names[0]} ({word} for profiles you rate higher).",
+                    "feature": key, "direction": "up" if up else "down",
+                    "strength": min(abs(change), 10.0)})
+    for label, hi_b in (("lowest", lo), ("highest", hi)):
+        dec = hi_b.dwell_by_decision
+        if "like" in dec and "pass" in dec and dec["like"].n >= 3 and dec["pass"].n >= 3:
+            a, b = dec["like"].p50, dec["pass"].p50
+            if abs(a - b) / max(a, b, 1) >= HEURISTIC_CHANGE:
+                out.append({"text": f"Among your {label}-scored profiles you take {_spoken('dwell_ms', a)} to like and {_spoken('dwell_ms', b)} to pass (median).",
+                            "feature": "dwell_by_decision", "direction": "up" if a > b else "down",
+                            "strength": abs(a - b) / max(a, b, 1)})
+    return sorted(out, key=lambda r: (r["feature"] not in ("like_rate", "hesitation"), -r["strength"]))
+
+
+def describe(m: BehaviorModel) -> dict:
+    """The model as plain JSON for the UI: bands, overall, rhythm, rules, which bands can be sampled, and feature labels."""
+    from dataclasses import asdict
+
+    d = asdict(m)
+    for b, raw in zip(d["bands"], m.bands):
+        b["usable"] = raw.n >= MIN_BAND and raw.log_dwell is not None
+    d["heuristics"] = heuristics(m)
+    d["features"] = {k: {"label": v[0], "unit": v[1], "browser_only": v[2]} for k, v in FEATURE_INFO.items()}
+    d["min_band"], d["break_ms"] = MIN_BAND, BREAK_MS
+    return d
