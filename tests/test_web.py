@@ -239,3 +239,8 @@ def test_behavior_page_and_untrained_endpoint(client):
     body = client.get("/api/behavior").json()
     assert body["trained"] is False and body["interactions"] == 0
     assert client.post("/api/behavior/train").status_code == 400
+
+
+def test_behavior_endpoint_lists_sources_and_accepts_a_source(client):
+    assert client.get("/api/behavior", params={"name": "tinder"}).json()["sources"] == []
+    assert client.post("/api/behavior/train", params={"name": "tinder", "source": "tinder"}).status_code == 400

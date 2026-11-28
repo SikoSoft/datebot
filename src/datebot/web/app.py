@@ -224,19 +224,23 @@ def create_app() -> FastAPI:
 
         m = behavior_model.load(name)
         with db.session() as conn:
-            have = len(db.interactions(conn, origin="app"))
+            rows = db.interactions(conn, origin="app")
+        sources = sorted({r["source"] for r in rows})
+        have = sum(1 for r in rows if name in ("default", "") or r["source"] == name) if name in sources else len(rows)
+        out = {"interactions": have, "min_total": behavior_model.MIN_TOTAL, "sources": sources}
         if m is None:
-            return {"trained": False, "interactions": have, "min_total": behavior_model.MIN_TOTAL}
-        return {"trained": True, "interactions": have, "model": behavior_model.describe(m)}
+            return {**out, "trained": False}
+        return {**out, "trained": True, "model": behavior_model.describe(m)}
 
     @app.post("/api/behavior/train")
-    def train_behavior(name: str = "default"):
-        """(Re)learn the behaviour model from your captured swipes. Derived features are refreshed; nothing is deleted."""
+    def train_behavior(name: str = "default", source: str | None = None):
+        """(Re)learn the behaviour model (optionally from one app's swipes only, saved under `name`).
+        Derived features are refreshed; nothing is deleted."""
         from datebot import behavior_model, embed
 
         with db.session() as conn:
             try:
-                behavior_model.train(conn, embed.EMBED_ID, name)
+                behavior_model.train(conn, embed.EMBED_ID, name, source or None)
             except ValueError as e:
                 raise HTTPException(400, str(e))
         return get_behavior(name)

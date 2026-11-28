@@ -52,7 +52,8 @@
   .btn.pass { left:62px; color:var(--pass); } .btn.like { right:62px; color:var(--like); }
   .btn.press { transform:scale(.86); } .btn.pass.press { background:var(--pass); color:#fff; } .btn.like.press { background:var(--like); color:#fff; }
   .window canvas { position:absolute; inset:0; pointer-events:none; }
-  .cursor { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; background:var(--accent); border:2px solid #fff; box-shadow:0 0 0 2px var(--accent); pointer-events:none; display:none; }
+  .cursor.tap { transform:scale(1.9); background:#fff; }
+  .cursor { transition:transform .12s, background .12s; position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; background:var(--accent); border:2px solid #fff; box-shadow:0 0 0 2px var(--accent); pointer-events:none; display:none; }
   .key { position:absolute; top:430px; font-size:12px; padding:2px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); opacity:.35; }
   .key.l { left:20px; } .key.r { right:20px; } .key.press { opacity:1; background:var(--accent); color:#fff; }
   .stamp { position:absolute; top:120px; left:0; right:0; text-align:center; font-size:46px; font-weight:800; letter-spacing:.06em; opacity:0; transform:rotate(-8deg); transition:opacity .2s; }
@@ -88,6 +89,7 @@
 <header>
   <h1>How you behave when you swipe</h1>
   <div class="ctl">
+    <label>App <select id="src"><option value="">all</option></select></label>
     <span id="status"></span>
     <button class="primary" id="train">Learn from my swipes</button>
   </div>
@@ -108,16 +110,21 @@ const secs = ms => ms == null ? '–' : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) 
 const pct = v => v == null ? '–' : Math.round(v * 100) + '%';
 let DATA = null;
 
+let SRC = '';  // '' = all apps pooled (model "default"); otherwise a per-app model saved under the app's name
+const modelName = () => SRC || 'default';
 async function load() {
-  const r = await fetch('/api/behavior');
+  const r = await fetch('/api/behavior?name=' + encodeURIComponent(modelName()));
   const d = await r.json();
   DATA = d;
+  const sel = $('src');
+  if (sel.options.length === 1) for (const s of d.sources) sel.append(h('option', { value: s }, s));
+  sel.onchange = () => { SRC = sel.value; load(); };
   render();
 }
 
 $('train').onclick = async () => {
   $('train').disabled = true; $('status').textContent = 'Learning… (embeds anything new first, can take a while)';
-  const r = await fetch('/api/behavior/train', { method: 'POST' });
+  const r = await fetch(`/api/behavior/train?name=${encodeURIComponent(modelName())}` + (SRC ? `&source=${encodeURIComponent(SRC)}` : ''), { method: 'POST' });
   const d = await r.json();
   $('train').disabled = false;
   if (!r.ok) { $('status').textContent = ''; const e = $('trainerr'); if (e) e.textContent = d.detail; else $('status').textContent = d.detail; return; }
@@ -131,7 +138,7 @@ function render() {
   if (!DATA.trained) {
     $('status').textContent = '';
     main.append(h('div', { class: 'panel' },
-      h('h2', {}, 'No behaviour model yet'),
+      h('h2', {}, SRC ? `No behaviour model for ${SRC} yet` : 'No behaviour model yet'),
       h('div', { class: 'hint' }, `You have ${DATA.interactions} captured swipes of your own; the model needs at least ${DATA.min_total} that belong to a profile with a preference score (rate profiles and train the taste model first). `
         + 'Tinder and Badoo browser capture records dwell and mouse/keyboard behaviour; Hinge records timing only.'),
       h('div', { id: 'trainerr', class: 'err' }), h('div', {}, 'Press “Learn from my swipes” above.')));
@@ -150,7 +157,7 @@ function tiles(m) {
   return h('div', { class: 'tiles' },
     t(m.n_interactions, 'scored swipes learned from'), t(DATA.interactions, 'own swipes captured'),
     t(m.rhythm.sessions, 'sessions'), t(`${usable}/${m.bands.length}`, `bands with ≥${m.min_band} swipes`),
-    t(m.source || 'all apps', 'source'), t(m.preference_model, 'preference model scoring'));
+    t(m.source || 'all apps', 'learned from'), t(m.preference_model, 'preference model scoring'));
 }
 
 function rulesPanel(m) {
@@ -337,18 +344,17 @@ function generate(band, typical, r, pLike, forced) {
   const jx = typical ? 0 : gauss(r) * 0.12, jy = typical ? 0 : gauss(r) * 0.12;
   const target = byKey ? { x: W * (0.4 + 0.2 * r()), y: 220 } : { x: btn.x + (clamp(rx + jx, 0.1, 0.9) - 0.5) * BTN * 0.9, y: btn.y + (clamp(ry + jy, 0.1, 0.9) - 0.5) * BTN * 0.9 };
   const start = { x: W * (0.25 + 0.5 * r()), y: 60 + 80 * r() };
-  let path = [];
-  if (hasPointer) path = buildPath(start, target, med('path_px', 600) * SCALE, med('straightness', 0.5), mean('jitter', 0.3), r, typical);
+  const path = [];
 
   // gallery / profile / scroll events
   const nNext = count('n_gallery_next'), nPrev = count('n_gallery_prev');
   const span = [first + 200, moveEnd - 300];
   const at = () => span[0] + r() * Math.max(0, span[1] - span[0]);
   const photoEv = [];
-  for (let i = 0; i < nNext; i++) photoEv.push({ t: at(), kind: 'photo', dir: 1, text: 'Clicks to the next photo' });
-  for (let i = 0; i < nPrev; i++) photoEv.push({ t: at(), kind: 'photo', dir: -1, text: 'Clicks back a photo' });
+  for (let i = 0; i < nNext; i++) photoEv.push({ t: at(), kind: 'photo', dir: 1, text: 'Moves to the right edge of the photo and clicks next' });
+  for (let i = 0; i < nPrev; i++) photoEv.push({ t: at(), kind: 'photo', dir: -1, text: 'Moves to the left edge of the photo and clicks back' });
   events.push(...photoEv);
-  if (mean('n_open_profile', 0) >= (typical ? 0.5 : r())) events.push({ t: Math.min(med('open_profile_ms', D * 0.4), moveEnd - 200), kind: 'open', text: 'Opens the full profile' });
+  if (mean('n_open_profile', 0) >= (typical ? 0.5 : r())) events.push({ t: Math.min(med('open_profile_ms', D * 0.4), moveEnd - 200), kind: 'open', text: 'Clicks the photo to open the full profile' });
   const down = count('wheel_down'), up = count('wheel_up');
   if (down) events.push({ t: at(), kind: 'scroll', text: up ? 'Scrolls down, then back up' : 'Scrolls down' });
   else if (up) events.push({ t: at(), kind: 'scroll', text: 'Scrolls up' });
@@ -362,7 +368,30 @@ function generate(band, typical, r, pLike, forced) {
     const maxP = med('longest_pause_ms', 700);
     const pauses = [];
     for (let i = 0; i < nP; i++) pauses.push(Math.max(400, i === 0 && hesitates ? Math.max(1000, maxP) : maxP * (0.5 + 0.5 * r())));
-    keys = timeKeys(path, first, moveEnd, pauses, med('end_speed_ratio', 0.3), r, events);
+    // photo/profile clicks happen with the pointer on the photo (right edge = next, left = back, middle = open profile), so
+    // the path runs start -> each click spot -> the like/pass button, with a short hold at every click.
+    const spots = { 1: { x: W - 24, y: 190 }, '-1': { x: 24, y: 190 }, open: { x: W / 2, y: 170 } };
+    const clicks = events.filter(e => e.kind === 'photo' || e.kind === 'open').sort((a, b) => a.t - b.t);
+    const anchors = []; let prevT = first + 300;
+    for (const e of clicks) {
+      const t = Math.max(e.t, prevT + 700);
+      if (t > moveEnd - 500) { events.splice(events.indexOf(e), 1); continue; }  // no room before the swipe: drop that click
+      e.t = t; prevT = t;
+      const sp = e.kind === 'open' ? spots.open : spots[e.dir];
+      anchors.push({ t, x: sp.x + (typical ? 0 : gauss(r) * 5), y: sp.y + (typical ? 0 : gauss(r) * 25) });
+    }
+    const pts = [start, ...anchors, target];
+    const chords = pts.slice(1).map((q, i) => Math.hypot(q.x - pts[i].x, q.y - pts[i].y) || 1);
+    const csum = chords.reduce((x, y) => x + y, 0), budget = med('path_px', 600) * SCALE;
+    const perSeg = pts.slice(1).map(() => []);
+    pauses.forEach(p => perSeg[Math.floor(r() * perSeg.length)].push(p));
+    let ts = first;
+    pts.slice(1).forEach((q, i) => {
+      const last = i === pts.length - 2, te = last ? moveEnd : anchors[i].t - 150;
+      const seg = buildPath(pts[i], q, budget * chords[i] / csum, med('straightness', 0.5), mean('jitter', 0.3), r, typical);
+      keys.push(...timeKeys(seg, ts, Math.max(ts + 150, te), perSeg[i], last ? med('end_speed_ratio', 0.3) : 0.6, r, events));
+      if (!last) { keys.push({ t: anchors[i].t + 120, x: q.x, y: q.y }); ts = anchors[i].t + 120; }
+    });
   }
   if (!hasPointer && hasInput && !byKey) events.push({ t: first, kind: 'note', text: 'Starts interacting (no pointer path recorded)' });
   if (hasPointer) events.push({ t: first, kind: 'note', text: 'Pointer starts moving' });
@@ -471,6 +500,7 @@ function play() {
     for (const e of sim.events) {
       if (e.fired || e.t > t) continue;
       e.fired = true; const li = $('ev' + e.i); if (li) li.classList.add('done');
+      if (e.kind === 'photo' || e.kind === 'open') { cur.classList.add('tap'); setTimeout(() => cur.classList.remove('tap'), 160 / speed); }
       if (e.kind === 'photo') { photoIdx = (photoIdx + e.dir + nDots) % nDots; drawDots(); photo.style.background = COLORS[photoIdx]; }
       else if (e.kind === 'open') win.classList.add('opened');
       else if (e.kind === 'scroll') { win.classList.add('scrolled'); setTimeout(() => win.classList.remove('scrolled'), 400 / speed); }
