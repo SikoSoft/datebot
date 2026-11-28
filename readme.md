@@ -270,6 +270,8 @@ Dwell is inferred from timestamps (it includes time spent on anything else betwe
 | `behavior show` / `behavior reset` | Print or forget a trained behaviour model. Interactions are kept. |
 | `behavior clear-data [--yes]` | Erase all behaviour telemetry. Profiles, photos and ratings are kept. |
 
+The UI's **Behaviour** page (`/behavior`) shows everything the model learned per score band, plain-language rules, and a simulation window that replays a made-up swipe (mouse path, pauses, photo clicks, like/pass press) for any preference score you pick. It has a button to (re)learn the model; it only displays, nothing acts on an account.
+
 The bot's own swipes are stored with origin `auto` and are never learned from. `behavior_model.sample_dwell_ms(model, score)`
 draws a dwell from your distribution for that score, but nothing calls it: nothing in datebot uses the behaviour model to act on your account.
 

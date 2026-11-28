@@ -33,7 +33,7 @@ Datebot: learns the user's dating preferences from their own swipes and scores p
 - `autoswipe/` `logic.py` (bands, card queue, handshake, governor), `runner.py` (controller with halt-on-surprise), `assess.py` (DB/model glue).
 - `capture/hinge.py` (verified parser + `HingeSession` joining `user/v3/public` and `content/v2/public`), `hinge_addon.py` (mitmproxy addon run by `datebot capture hinge`), `hinge_probe.py` (raw traffic dump).
 - `behavior.py` (`derive`: raw inputs -> features; `FEATURE_VERSION`), `interactions.py` (`InteractionTracker`: per-run session, card start time, one interaction per swipe), `capture/telemetry.py` (injected passive listener + `EventBuffer`), `behavior_model.py` (per-score-band distributions, rhythm, `sample_dwell_ms`; saved under `data/models/behavior/`). Tables `sessions`/`interactions` (raw zlib JSON + derived features; profile/rating links nullable). Only `origin='app'` interactions are ever learned from. Hinge gives timing only (proxy); pointer/scroll data exists only for Tinder/Badoo browser capture.
-- `web/` FastAPI rating UI (`datebot ui`).
+- `web/` FastAPI rating UI (`datebot ui`); `/behavior` page (`static/behavior.html`) displays the behaviour model (`behavior_model.describe`/`heuristics`) with a client-side swipe simulation. Display only.
 
 ## Status (as of 2026-11-25)
 
